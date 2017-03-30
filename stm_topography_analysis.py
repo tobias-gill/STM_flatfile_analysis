@@ -20,6 +20,12 @@ class local_plane():
         Optional Arguments
         :param scan_dir: flat file scan direction.
         """
+
+        x0 = self.nm2pnt(x0, file_data)
+        x1 = self.nm2pnt(x1, file_data)
+        y0 = self.nm2pnt(y0, file_data, axis='y')
+        y1 = self.nm2pnt(y1, file_data, axis='y')
+
         self.topo_info = file_data[scan_dir].info
         self.x_res = self.topo_info['xres']
         self.y_res = self.topo_info['yres']
@@ -37,6 +43,33 @@ class local_plane():
         self.topo_data_flattened = self.topo_data_flattened - np.amin(self.topo_data_flattened)
 
         self.get_data()
+
+    def nm2pnt(self, nm, flat_file, axis='x'):
+        """
+        Convert between nanometers and corresponding pixel number for a given Omicron flat file.
+
+        :param nm: Nanometer value.
+        :param flat_file: Instance of an Omicron flat file.
+        :param axis: Plot axis of nm point. Must be either 'x' or 'y'.
+        :return: Pixel number for nanometer value.
+        """
+        if axis == 'x':
+            inc = flat_file[0].info['xinc']
+        elif axis == 'y':
+            inc = flat_file[0].info['yinc']
+
+        pnt = np.int(np.round(nm / inc))
+
+        if pnt < 0:
+            pnt = 0
+        if axis == 'x':
+            if pnt > flat_file[0].info['xres']:
+                pnt = flat_file[0].info['xres']
+        elif axis == 'y':
+            if pnt > flat_file[0].info['yres']:
+                pnt = flat_file[0].info['yres']
+
+        return pnt
 
     def get_data(self):
         """
@@ -212,6 +245,12 @@ def stm_crop(flat_file, xmin, xmax, ymin, ymax):
     :param ymax: Crop y-axis final co-ordinate.
     :return: New flat file instance with cropped image data.
     """
+
+    xmin = nm2pnt(xmin, flat_file)
+    xmax = nm2pnt(xmax, flat_file)
+    ymin = nm2pnt(ymin, flat_file, axis='y')
+    ymax = nm2pnt(ymax, flat_file, axis='y')
+
     flat_file_copy = deepcopy(flat_file)  # Create a new deep copy of the flat file.
 
     # For each scan direction in the flat file crop the data and amend metadata.
