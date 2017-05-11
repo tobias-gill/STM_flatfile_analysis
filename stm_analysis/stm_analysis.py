@@ -2,6 +2,7 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patch
+from matplotlib.colors import LogNorm
 import ipywidgets as ipy
 from IPython.display import display
 import flatfile_3 as ff
@@ -10,7 +11,6 @@ import flatfile_3 as ff
 __version__ = "1.11"
 __date__ = "25th March 2017"
 __status__ = "Pending"
-
 __authors__ = "Procopi Constantinou & Tobias Gill"
 __email__ = "procopios.constantinou.16@ucl.ac.uk"
 
@@ -114,38 +114,38 @@ class STS(object):
         self.all_flatfile_extract()
 
         # 2.2 - Defining all the attributes associated with the I(V) file selection
-        self.selected_files = None                                      # List of the selected I(V) aliases
-        self.num_of_selected_files = None                               # Total number of I(V) flat files selected
-        self.selected_pos = None                                        # List of the array positions of the I(V) files
-        self.selected_data = None                                       # List of the selected I(V) flat file classes
-        self.selected_v_dat = None                                      # List of the selected I(V) voltage data domains
-        self.selected_i_dat = None                                      # List of the selected I(V) current data ranges
+        self.selected_files = None                          # List of the selected I(V) aliases
+        self.num_of_selected_files = None                   # Total number of I(V) flat files selected
+        self.selected_pos = None                            # List of the array positions of the I(V) files
+        self.selected_data = None                           # List of the selected I(V) flat file classes
+        self.selected_v_dat = None                          # List of the selected I(V) voltage data domains
+        self.selected_i_dat = None                          # List of the selected I(V) current data ranges
 
         # 2.3 - Passing the selected files through the sts analysis functions
         # 2.3.1 Cross-correlation analysis attributes
-        self.xcorr_info = None                                          # Dictionary with all the cross-correlation info
-        self.xcorr_v_dat = None                                         # List of cross-correlated I(V) voltages
-        self.xcorr_i_dat = None                                         # List of cross-correlated I(V) currents
-        self.v_outliers = None                                          # 1D array of the outlying voltage points
-        self.i_outliers = None                                          # 1D array of the outlying current points
+        self.xcorr_info = None                              # Dictionary with all the cross-correlation info
+        self.xcorr_v_dat = None                             # List of cross-correlated I(V) voltages
+        self.xcorr_i_dat = None                             # List of cross-correlated I(V) currents
+        self.v_outliers = None                              # 1D array of the outlying voltage points
+        self.i_outliers = None                              # 1D array of the outlying current points
         # 2.3.2 Cropped voltage domain attributes
-        self.xcrop_v_dat = None                                         # Cross-correlated, cropped I(V) voltage list
-        self.xcrop_i_dat = None                                         # Cross-correlated, cropped  I(V) current list
-        # 2.3.3 Point STS analysis attributes
-        self.mean_i_data = None
-        self.meansq_i_data = None
-        self.smooth_i_data = None
-        self.smoothsq_i_data = None
-        self.didv_data = None
-        self.didv_sq_data = None
-        self.i_var = None
-        # 2.3.4 Line STS analysis attributes
-
-        # 2.3.5 User interaction
-        self.widgets = None                                             # Widget object to hold all pre-defined widgets
-        self.get_widgets()                                              # Function to get all of the pre-defined widgets
-        self.output = None                                              # Output to the user interaction with widgets
-        self.user_interaction()                                         # Function to allow continuous user interaction
+        self.xcrop_v_dat = None                             # Cross-correlated, cropped I(V) voltage list
+        self.xcrop_i_dat = None                             # Cross-correlated, cropped  I(V) current list
+        # 2.3.3 STS analysis attributes
+        self.avg_i_data = None                              # Average I(V) curve over all selected files
+        self.avgsq_i_data = None                            # Average of the squared I(V) curves over all selected files
+        self.smooth_i_data = None                           # Smoothed I(V) curves of all selected files
+        self.smooth_avg_i_data = None                       # Smoothed version of the average I(V) curve
+        self.smooth_avgsq_i_data = None                     # Smoothed version of the average of the squares I(V) curve
+        self.didv_data = None                               # Derivative of all smoothed I(V) curves in a 2D array form
+        self.didv_avg_data = None                           # Derivative of the average I(V) curve
+        self.didv_avgsq_data = None                         # Derivative of the average of the squares I(V) curve
+        self.i_var = None                                   # Variance/uncertainty in the best estimation of dI/dV
+        # 2.3.4 User interaction
+        self.widgets = None                                 # Widget object to hold all pre-defined widgets
+        self.get_widgets()                                  # Function to get all of the pre-defined widgets
+        self.output = None                                  # Output to the user interaction with widgets
+        self.user_interaction()                             # Function to allow continuous user interaction
 
     def all_flatfile_extract(self):
         """
@@ -373,10 +373,11 @@ class STS(object):
         self.xcrop_i_dat = i_crop
         self.v_outliers = np.append(self.v_outliers, v_outliers)
         self.i_outliers = np.append(self.i_outliers, i_outliers)
+
     def sts_analysis(self, retrace="Both", smooth_type="Binomial", smooth_order=3):
         """
-        Full analysis of the I(V) spectroscopy curves, including; (i) averaging, (ii) smoothing, (iii) differentiation,
-        (iv) variation in the dIdV curves.
+        Full STS analysis of the I(V) spectroscopy curves, including; (i) averaging, (ii) smoothing, 
+        (iii) differentiation and (iv) variation in the dIdV curves.
         """
         # 1 - Finding the average of the selected I(V) (and I(V) squared for variance calculation)
         # 1.1 If the both traces of I(V) are to be included
@@ -388,7 +389,7 @@ class STS(object):
             retrace_mean = np.mean(
                 np.array([self.xcrop_i_dat[j][1] for j in range(self.num_of_selected_files)]),
                 axis=0)
-            self.mean_i_data = np.mean(np.array([trace_mean, retrace_mean]), axis=0)
+            self.avg_i_data = np.mean(np.array([trace_mean, retrace_mean]), axis=0)
             # - Finding the mean of the squared I(V) curves
             trace_mean = np.mean(
                 np.array([self.xcrop_i_dat[j][0]**2 for j in range(self.num_of_selected_files)]),
@@ -396,71 +397,157 @@ class STS(object):
             retrace_mean = np.mean(
                 np.array([self.xcrop_i_dat[j][1]**2 for j in range(self.num_of_selected_files)]),
                 axis=0)
-            self.meansq_i_data = np.mean(np.array([trace_mean, retrace_mean]), axis=0)
-
+            self.avgsq_i_data = np.mean(np.array([trace_mean, retrace_mean]), axis=0)
         # 1.2 If the trace I(V) curve is only selected
         elif retrace == "Trace only":
             # - Finding the mean of the trace I(V) curves
             trace_mean = np.mean(
                 np.array([self.xcrop_i_dat[j][0] for j in range(self.num_of_selected_files)]),
                 axis=0)
-            self.mean_i_data = trace_mean
+            self.avg_i_data = trace_mean
             # - Finding the mean of the trace squared I(V) curves
             trace_mean = np.mean(
                 np.array([self.xcrop_i_dat[j][0] ** 2 for j in range(self.num_of_selected_files)]),
                 axis=0)
-            self.meansq_i_data = trace_mean
+            self.avgsq_i_data = trace_mean
         # 1.3 If the retrace I(V) curve is only selected
         elif retrace == "Retrace only":
-            # - Finding the mean of the trace I(V) curves
+            # - Finding the mean of the retrace I(V) curves
             retrace_mean = np.mean(
                 np.array([self.xcrop_i_dat[j][1] for j in range(self.num_of_selected_files)]),
                 axis=0)
-            self.mean_i_data = retrace_mean
+            self.avg_i_data = retrace_mean
             # - Finding the mean of the retrace squared I(V) curves
             retrace_mean = np.mean(
                 np.array([self.xcrop_i_dat[j][1] ** 2 for j in range(self.num_of_selected_files)]),
                 axis=0)
-            self.meansq_i_data = retrace_mean
+            self.avgsq_i_data = retrace_mean
 
-        # 2 - Smoothing the I(V) curves using a chosen smoothing type
-        # 2.1 If binomial smoothing is required
-        if smooth_type == "Binomial":
-            import scipy.ndimage.filters as smth
-            # - Smoothing the average I(V) curve
-            smooth_avg_data = smth.gaussian_filter(self.mean_i_data, smooth_order)
-            # Smoothing the squared average I(V) curve
-            smooth_sqavg_data = smth.gaussian_filter(self.meansq_i_data, smooth_order)
-        # 2.2 If savgol smoothing is required
-        if smooth_type == "Savitzky-Golay":
-            import scipy.signal as smth
-            # Smoothing the average I(V) curve
-            smooth_avg_data = smth.savgol_filter(self.mean_i_data, 51, smooth_order)
-            # Smoothing the squared average I(V) curve
-            smooth_sqavg_data = smth.savgol_filter(self.meansq_i_data, 51, smooth_order)
-        # 2.3 If no smoothing is required
-        if smooth_type == "None":
-            # Selecting only the average I(V) curve
-            smooth_avg_data = self.mean_i_data
-            # Smoothing the squared average I(V) curve
-            smooth_sqavg_data = self.meansq_i_data
-        # Saving the mean smoothed I(V) curves as attributes
-        self.smooth_i_data = smooth_avg_data
-        self.smoothsq_i_data = smooth_sqavg_data
+        # 2 - Smoothing the mean and all selected I(V) curves using a chosen smoothing type
+        self.smooth_i_data = list()
+        # Run a for-loop over all the selected files
+        for i in range(self.num_of_selected_files):
+            # - If binomial smoothing is required
+            if smooth_type == "Binomial":
+                import scipy.ndimage.filters as smth
+                # For the first run, calculate the smooth of the average I(V) curve
+                if i == 0:
+                    # Smoothing the average I(V) curve
+                    self.smooth_avg_i_data = smth.gaussian_filter(self.avg_i_data, smooth_order)
+                    # Smoothing the squared average I(V) curve
+                    self.smooth_avgsq_i_data = smth.gaussian_filter(self.avgsq_i_data, smooth_order)
+                if retrace == "Trace only":
+                    self.smooth_i_data.append(smth.gaussian_filter(self.xcrop_i_dat[i][0], smooth_order))
+                elif retrace == "Retrace only":
+                    self.smooth_i_data.append(smth.gaussian_filter(self.xcrop_i_dat[i][1], smooth_order))
+                elif retrace == "Both":
+                    i_holder = list()
+                    i_holder.append(smth.gaussian_filter(self.xcrop_i_dat[i][0], smooth_order))
+                    i_holder.append(smth.gaussian_filter(self.xcrop_i_dat[i][1], smooth_order))
+                    self.smooth_i_data.append(i_holder)
+            # - If savgol smoothing is required
+            elif smooth_type == "Savitzky-Golay":
+                import scipy.signal as smth
+                # For the first run, calculate the smooth of the average I(V) curve
+                if i == 0:
+                    # Smoothing the average I(V) curve
+                    self.smooth_avg_i_data = smth.savgol_filter(self.avg_i_data, 51, smooth_order)
+                    # Smoothing the squared average I(V) curve
+                    self.smooth_avgsq_i_data = smth.savgol_filter(self.avgsq_i_data, 51, smooth_order)
+                if retrace == "Trace only":
+                    self.smooth_i_data.append(smth.savgol_filter(self.xcrop_i_dat[i][0], 51, smooth_order))
+                elif retrace == "Retrace only":
+                    self.smooth_i_data.append(smth.savgol_filter(self.xcrop_i_dat[i][1], 51, smooth_order))
+                elif retrace == "Both":
+                    i_holder = list()
+                    i_holder.append(smth.savgol_filter(self.xcrop_i_dat[i][0], 51, smooth_order))
+                    i_holder.append(smth.savgol_filter(self.xcrop_i_dat[i][1], 51, smooth_order))
+                    self.smooth_i_data.append(i_holder)
+            # - If no smoothing is required
+            elif smooth_type == "None":
+                # For the first run, calculate the smooth of the average I(V) curve
+                if i == 0:
+                    # Selecting only the average I(V) curve
+                    self.smooth_avg_i_data = self.avg_i_data
+                    # Smoothing the squared average I(V) curve
+                    self.smooth_avgsq_i_data = self.avgsq_i_data
+                # Smoothing every I(V) curve selected
+                if retrace == "Trace only":
+                    self.smooth_i_data.append(self.xcrop_i_dat[i][0])
+                elif retrace == "Retrace only":
+                    self.smooth_i_data.append(self.xcrop_i_dat[i][1])
+                elif retrace == "Both":
+                    i_holder = list()
+                    i_holder.append(self.xcrop_i_dat[i][0])
+                    i_holder.append(self.xcrop_i_dat[i][1])
+                    self.smooth_i_data.append(i_holder)
 
-        # 3 - Determine the derivative of the average and/or smoothed I(V) curve
-        # Note: In order to ensure that no data-points are negative, the dIdV data is vertically offset by 1.1 times the
-        # minimum dIdV value to ensure it is globally positive.
-        # - Differentiating the averaged, smoothed I(V) curve
-        dIdV = np.diff(self.smooth_i_data)
-        self.didv_data = dIdV + 1.1 * abs(np.min(dIdV))
-        # Differentiating the squared averaged, smoothed I(V) curve
-        dIdV_sq = np.diff(self.smoothsq_i_data)
-        self.didv_sq_data = dIdV_sq + 1.1 * abs(np.min(dIdV_sq))
+        # 3 - Find the derivative of the mean and all selected I(V) curves (along with the variance)
+        # - If only a single file is selected
+        if self.num_of_selected_files == 1:
+            # - Differentiating the averaged, smoothed I(V) curve
+            self.didv_avg_data = np.diff(self.smooth_avg_i_data)
+            self.didv_avg_data = self.didv_avg_data + 1.1 * abs(min(self.didv_avg_data))
+            # - Differentiating the squared averaged, smoothed I(V) curve
+            self.didv_avgsq_data = np.diff(self.smooth_avgsq_i_data)
+            self.didv_avgsq_data = self.didv_avgsq_data + 1.1 * abs(min(self.didv_avgsq_data))
+            # - Finding the variance by using: Var(X) = [ E(X)^2 - E(X^2) ]
+            self.i_var = abs(self.didv_avgsq_data - self.didv_avg_data)
+            # The derivative for the rest of the I(V) curves (only 1 in this case, but made in a 2D array for imshow)
+            # If the both traces of I(V) are to be included
+            if retrace == "Both":
+                didv_trace = np.diff(self.smooth_i_data[i][0])
+                didv_retrace = np.diff(self.smooth_i_data[i][1])
+                didv = np.mean(np.array([didv_trace, didv_retrace]), axis=0)
+                didv = didv + 1.1 * abs(min(didv))
+                self.didv_data = np.array([didv])
+            # If either the trace or retrace I(V) curve is selected
+            else:
+                didv = np.diff(self.smooth_i_data[i])
+                didv = didv + 1.1 * abs(min(didv))
+                self.didv_data = np.array([didv])
 
-        # 4 - Finding the variance by using: Var(X) = [ E(X)^2 - E(X^2) ]
-        # If Trace is selected with only one file, no variance can be determined
-        self.i_var = abs(self.didv_sq_data - self.didv_data)
+        # - If multiple files are selected
+        else:
+            for i in range(self.num_of_selected_files):
+                # For the first run, calculate the derivatives of the average I(V) curve
+                if i == 0:
+                    # - Differentiating the averaged, smoothed I(V) curve
+                    self.didv_avg_data = np.diff(self.smooth_avg_i_data)
+                    self.didv_avg_data = self.didv_avg_data + 1.1*abs(min(self.didv_avg_data))
+                    # - Differentiating the squared averaged, smoothed I(V) curve
+                    self.didv_avgsq_data = np.diff(self.smooth_avgsq_i_data)
+                    self.didv_avgsq_data = self.didv_avgsq_data + 1.1 * abs(min(self.didv_avgsq_data))
+                    # - Finding the variance by using: Var(X) = [ E(X)^2 - E(X^2) ]
+                    self.i_var = abs(self.didv_avgsq_data - self.didv_avg_data)
+                    # - Initialising the 2D array for all dIdV curves
+                    # If the both traces of I(V) are to be included
+                    if retrace == "Both":
+                        didv_trace = np.diff(self.smooth_i_data[i][0])
+                        didv_retrace = np.diff(self.smooth_i_data[i][1])
+                        didv = np.mean(np.array([didv_trace, didv_retrace]), axis=0)
+                        didv = didv + 1.1 * abs(min(didv))
+                        self.didv_data = didv
+                    # If either the trace or retrace I(V) curve is selected
+                    else:
+                        didv = np.diff(self.smooth_i_data[i])
+                        didv = didv + 1.1 * abs(min(didv))
+                        self.didv_data = didv
+
+                else:
+                    # Calculate the derivative for all the rest of the I(V) curves selected
+                    # If the both traces of I(V) are to be included
+                    if retrace == "Both":
+                        didv_trace = np.diff(self.smooth_i_data[i][0])
+                        didv_retrace = np.diff(self.smooth_i_data[i][1])
+                        didv = np.mean(np.array([didv_trace, didv_retrace]), axis=0)
+                        didv = didv + 1.1 * abs(min(didv))
+                        self.didv_data = np.vstack([self.didv_data, didv])
+                    # If either the trace or retrace I(V) curve is selected
+                    else:
+                        didv = np.diff(self.smooth_i_data[i])
+                        didv = didv + 1.1 * abs(min(didv))
+                        self.didv_data = np.vstack([self.didv_data, didv])
 
     def sts_egap_finder(self, e_gap):
         """
@@ -477,18 +564,26 @@ class STS(object):
         v_lhs = self.xcrop_v_dat[0][1:][:mean_v_index]
         v_rhs = self.xcrop_v_dat[0][1:][mean_v_index:]
         # - Cropping the dIdV data
-        didv_lhs = self.didv_data[:mean_v_index]
-        didv_rhs = self.didv_data[mean_v_index:]
+        didv_lhs = self.didv_avg_data[:mean_v_index]
+        didv_rhs = self.didv_avg_data[mean_v_index:]
         # Extracting the mean dIdV value within the selected voltage gap
-        didv_mean = np.mean(self.didv_data[lower_v_index:upper_v_index])
+        didv_mean = np.mean(self.didv_avg_data[lower_v_index:upper_v_index])
         # Extracting the band-gap given the 1 sigma condition
-        didv_sigma1 = didv_mean + np.std(self.didv_data[lower_v_index:upper_v_index])
-        v_lhs_sigma1 = v_lhs[didv_lhs < didv_sigma1][0]
-        v_rhs_sigma1 = v_rhs[didv_rhs < didv_sigma1][-1]
+        didv_sigma1 = didv_mean + np.std(self.didv_avg_data[lower_v_index:upper_v_index])
         # Extracting the band-gap given the 2 sigma condition
-        didv_sigma2 = didv_mean + 2 * np.std(self.didv_data[lower_v_index:upper_v_index])
-        v_lhs_sigma2 = v_lhs[didv_lhs < didv_sigma2][0]
-        v_rhs_sigma2 = v_rhs[didv_rhs < didv_sigma2][-1]
+        didv_sigma2 = didv_mean + 2 * np.std(self.didv_avg_data[lower_v_index:upper_v_index])
+        # If the voltage domain never reaches below the 1 sigma value of dIdV (error evasion for retracted I(V) noise)
+        if len(didv_lhs < didv_sigma1) == 0:
+            v_lhs_sigma1 = e_gap[0]
+            v_rhs_sigma1 = e_gap[1]
+            v_lhs_sigma2 = e_gap[0]
+            v_rhs_sigma2 = e_gap[1]
+        # If the voltage domain does reach below the 1 sigma value of dIdV (follow this path for normal I(V) curves)
+        else:
+            v_lhs_sigma1 = v_lhs[didv_lhs < didv_sigma1][0]
+            v_rhs_sigma1 = v_rhs[didv_rhs < didv_sigma1][-1]
+            v_lhs_sigma2 = v_lhs[didv_lhs < didv_sigma2][0]
+            v_rhs_sigma2 = v_rhs[didv_rhs < didv_sigma2][-1]
 
         # Collating all of the gap information into a dictionary
         self.gap_info = {}
@@ -506,9 +601,223 @@ class STS(object):
         self.gap_info['Mean dIdV + 1 sigma'] = didv_sigma1
         self.gap_info['Mean dIdV + 2 sigma'] = didv_sigma2
 
-    def sts_cbm_vbm_stats(self):
+    def iv_plot(self, ax, retrace, axes_type, vbias_lims, i_lim):
+        """
+        Function to plot and format all the raw I(V) curves that have been selected.
+        """
+        # Formatting the I(V) curve plot
+        ax.set_title("Raw I(V) curves", fontsize=20, fontweight="bold")
+        ax.set_xlabel("Voltage bias [V]", fontsize=19)
+        ax.set_ylabel("Current [A]", fontsize=19)
+        ax.axhline(0, color='gray', linewidth=2.5)
+        ax.axvline(0, color='gray', linewidth=2.5)
+        ax.grid(True)
+        # Plot all of the raw I(V) curves that are selected
+        for i in range(self.num_of_selected_files):
+            trace_alpha = 0.6
+            retrace_alpha = 0.6
+            if retrace == "Trace only":
+                retrace_alpha = 0.05
+            elif retrace == "Retrace only":
+                trace_alpha = 0.05
+            ax.plot(self.xcrop_v_dat[i], self.xcrop_i_dat[i][0], 'k.-', linewidth=1.0, markersize=4.5,
+                    alpha=trace_alpha, label='Trace')
+            ax.plot(self.xcrop_v_dat[i], self.xcrop_i_dat[i][1], 'b.-', linewidth=1.0, markersize=4.5,
+                    alpha=retrace_alpha, label='Retrace')
+        # If there are outliers due to cross-correlation or restricted voltage domain, show them as grey points
+        if len(self.v_outliers) > 1:
+            ax.plot(self.v_outliers, self.i_outliers, '.', markersize=4.5,
+                    color='gray', alpha=0.2, label='Omitted')
+            ax.legend(handles=list([patch.Patch(color='black', label='Trace'),
+                                    patch.Patch(color='blue', label='Retrace'),
+                                    patch.Patch(color='gray', label='Omitted')]),
+                      loc='best', prop={'size': 12})
+        # If there are no outliers, just show the default legend
+        else:
+            ax.legend(handles=list([patch.Patch(color='black', label='Trace'),
+                                    patch.Patch(color='blue', label='Retrace')]),
+                      loc='best', prop={'size': 12})
+        # If axes limit is selected, plot the effects of this
+        if axes_type == 'Axes limit':
+            ax.set_xlim(vbias_lims[0], vbias_lims[1])
+            ax.set_ylim(i_lim * -1e-9, i_lim * 1e-9)
 
-        print('hey')
+    def iv_int_plots(self, ax1, ax2, ax3, smooth, axes_type, vbias_lims, i_lim, didv_lim):
+        """
+        Function to plot all the intermediate stages of the analysis.
+        """
+        # Set the color of the intermediate curves
+        col = '#006600'
+        # Plot and format the mean I(V) curve over all selected I(V) curves
+        ax1.set_title("1 - Averaged", fontsize=13, fontweight="bold")
+        ax1.set_ylabel("Current [$A$]", fontsize=19)
+        ax1.axhline(0, color='gray', linewidth=2.5)
+        ax1.axvline(0, color='gray', linewidth=2.5)
+        ax1.grid(True)
+        ax1.plot(self.xcrop_v_dat[0], self.avg_i_data, '.-', linewidth=1.5, markersize=4.5, color=col)
+        ax1.legend(handles=list([patch.Patch(color=col, label='Average I(V)')]),
+                   loc='best', prop={'size': 10})
+        # If axes limit is selected, plot the effects of this
+        if axes_type == 'Axes limit':
+            ax1.set_xlim(vbias_lims[0], vbias_lims[1])
+            ax1.set_ylim(i_lim * -1e-9, i_lim * 1e-9)
+
+        # Plot and format the smoothed of the average I(V) curve
+        ax2.set_title("2 -" + str(smooth) + " Smoothed", fontsize=13, fontweight="bold")
+        ax2.set_ylabel("Current [$A$]", fontsize=19)
+        ax2.axhline(0, color='gray', linewidth=2.5)
+        ax2.axvline(0, color='gray', linewidth=2.5)
+        ax2.grid(True)
+        ax2.plot(self.xcrop_v_dat[0], self.smooth_avg_i_data, '.-', linewidth=1.5, markersize=4.5,
+                 color=col)
+        ax2.legend(handles=list([patch.Patch(color=col, label='Smoothed avgerage I(V)')]),
+                   loc='best', prop={'size': 10})
+        # If axes limit is selected, plot the effects of this
+        if axes_type == 'Axes limit':
+            ax2.set_xlim(vbias_lims[0], vbias_lims[1])
+            ax2.set_ylim(i_lim * -1e-9, i_lim * 1e-9)
+        # Deleting the x-axis ticks as they are all identical and shown by the bottom subplot
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+
+        # Plot and format the final differentiated I(V) curve
+        ax3.set_title("3 - Differentiated", fontsize=13, fontweight="bold")
+        ax3.set_xlabel("Voltage bias [$V$]", fontsize=19)
+        ax3.set_ylabel("dI/dV [$A/V$]", fontsize=19)
+        ax3.axhline(0, color='gray', linewidth=2.5)
+        ax3.axvline(0, color='gray', linewidth=2.5)
+        ax3.grid(True)
+        ax3.plot(self.xcrop_v_dat[0][1:], self.didv_avg_data, '.-', linewidth=1.5, markersize=4.5,
+                 color=col)
+        ax3.legend(handles=list([patch.Patch(color=col, label='dI/dV(V)')]),
+                   loc='best', prop={'size': 10})
+        # If axes limit is selected, plot the effects of this
+        if axes_type == 'Axes limit':
+            ax3.set_xlim(vbias_lims[0], vbias_lims[1])
+            ax3.set_ylim(ymax=didv_lim * 1e-12)
+
+    def didv_plot(self, ax, axes_type, vbias_lims, didv_lim, egap=False, stacked=False):
+        """
+        Function to plot and format the final dI/dV curve obtained from the raw I(V) curves.
+        """
+        # Formatting the dI/dV curve plot
+        ax.set_title("Analysed dI/dV curves", fontsize=20, fontweight="bold")
+        ax.set_xlabel("Voltage bias [$V$]", fontsize=19)
+        ax.set_ylabel("dI/dV [$A/V$]", fontsize=19)
+        ax.axvline(0, color='gray', linewidth=2.5)
+        ax.grid(True, which='minor')
+        ax.grid(True, which='major')
+        # Plot all the selected dI/dV curves stacked on top of each other if stacked is True
+        if stacked:
+            for i in range(self.num_of_selected_files):
+                ax.semilogy(self.xcrop_v_dat[0][1:], self.didv_data[i], '.-', linewidth=2.0, markersize=4.5, alpha=0.4,
+                            color='#90046C')
+                plt.legend(handles=list([patch.Patch(color='black', label='dI/dV'),
+                                         patch.Patch(color=[0.3, 0.3, 0.3], alpha=0.3, label='Variance'),
+                                         patch.Patch(color='#90046C', alpha=0.3, label='Selected dI/dV')]),
+                           loc='best', prop={'size': 12})
+        else:
+            plt.legend(handles=list([patch.Patch(color='black', label='dI/dV'),
+                                     patch.Patch(color=[0.3, 0.3, 0.3], alpha=0.3, label='Variance')]),
+                       loc='best', prop={'size': 12})
+        # Plot the dI/dV curve
+        plt.semilogy(self.xcrop_v_dat[0][1:], self.didv_avg_data, 'k.-', linewidth=2.0, markersize=4.5)
+        # Plotting the variance associated with dIdV
+        plt.semilogy(self.xcrop_v_dat[0][1:], self.didv_avg_data + self.i_var, '-', linewidth=1.0,
+                     color=[0.3, 0.3, 0.3], alpha=0.3)
+        plt.fill_between(self.xcrop_v_dat[0][1:], self.didv_avg_data, self.didv_avg_data + self.i_var,
+                         color=[0.6, 0.6, 0.6], alpha=0.3)
+        if egap:
+            # Plot the best estimates for the band-gap, VBM and CBM edges
+            # - Extracting the average band-gap line
+            v_gap = np.array([self.gap_info['VBM'], self.gap_info['Egap centre'], self.gap_info['CBM']])
+            didv_gap = np.ones(len(v_gap)) * self.gap_info['Mean dIdV']
+            # - Extracting the 1-sigma band-gap line
+            v_gap_sigma1 = np.array(
+                [self.gap_info['VBM + 1 sigma'], self.gap_info['Egap centre'], self.gap_info['CBM + 1 sigma']])
+            didv_gap_sigma1 = np.ones(len(v_gap_sigma1)) * self.gap_info['Mean dIdV + 1 sigma']
+            # - Extracting the 2-sigma band-gap line
+            v_gap_sigma2 = np.array(
+                [self.gap_info['VBM + 2 sigma'], self.gap_info['Egap centre'], self.gap_info['CBM + 2 sigma']])
+            didv_gap_sigma2 = np.ones(len(v_gap_sigma2)) * self.gap_info['Mean dIdV + 2 sigma']
+            # - Plot the band-gap lines and middle position points
+            plt.plot(v_gap, didv_gap, '-', linewidth=6, markersize=10, color=[0, 0, 0.3])
+            plt.plot(v_gap_sigma1, didv_gap_sigma1, '-', linewidth=5, markersize=10, color=[0, 0, 0.6])
+            plt.plot(v_gap_sigma2, didv_gap_sigma2, '-', linewidth=4, markersize=8, color=[0, 0, 0.9])
+            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0, 0, 0.3])
+            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
+                     color=[0, 0, 0.6])
+            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
+                     color=[0, 0, 0.9])
+            # - Plot the VBM position points
+            plt.plot(self.gap_info['VBM'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0, 0.3, 0])
+            plt.plot(self.gap_info['VBM + 1 sigma'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
+                     color=[0, 0.6, 0])
+            plt.plot(self.gap_info['VBM + 2 sigma'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
+                     color=[0, 0.9, 0])
+            # - Plot the CBM position points
+            plt.plot(self.gap_info['CBM'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0.3, 0, 0])
+            plt.plot(self.gap_info['CBM + 1 sigma'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
+                     color=[0.6, 0, 0])
+            plt.plot(self.gap_info['CBM + 2 sigma'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
+                     color=[0.9, 0, 0])
+            # Shade in the areas between the band-gap uncertainty lines
+            xshade1 = np.array([v_gap[0], v_gap_sigma1[0], v_gap_sigma1[-1], v_gap[-1]])
+            yshade1 = np.array([didv_gap[0], didv_gap_sigma1[0], didv_gap_sigma1[-1], didv_gap[-1]])
+            plt.fill_between(xshade1, yshade1, color=[0, 0, 0.6], alpha=0.3)
+            xshade2 = np.array([v_gap_sigma1[0], v_gap_sigma2[0], v_gap_sigma2[-1], v_gap_sigma1[-1]])
+            yshade2 = np.array([didv_gap_sigma1[0], didv_gap_sigma2[0], didv_gap_sigma2[-1], didv_gap_sigma1[-1]])
+            plt.fill_between(xshade2, yshade2, color=[0, 0, 0.9], alpha=0.3)
+        # Limit the axes if selected by the user
+        if axes_type == 'Axes limit':
+            plt.xlim(vbias_lims[0], vbias_lims[1])
+            plt.ylim(ymax=didv_lim * 1e-12)
+
+    def didv_image(self, ax, axes_type, vbias_lims, didv_lim):
+        """
+        Function to plot the mean dI/dV curve and all the stacked dI/dV curves from all the selected I(V) files.
+        """
+        # Formatting the dI/dV image
+        ax.set_title("Train of dI/dV curves", fontsize=20, fontweight="bold")
+        ax.set_ylabel("Voltage bias [$V$]", fontsize=19)
+        ax.set_xlabel("Index", fontsize=19)
+        ax.axhline(0, color='white', linewidth=2.5, linestyle='--')
+        ax.set_yticks(np.arange(np.round(np.min(self.xcrop_v_dat[0]), 0), np.round(np.max(self.xcrop_v_dat[0]), 0),
+                                0.2))
+        if self.num_of_selected_files < 150:
+            ax.set_xticks(np.arange(0, self.num_of_selected_files, 5))
+        else:
+            ax.set_xticks(np.arange(0, self.num_of_selected_files, 20))
+        ax.yaxis.grid(which="major")
+        img = np.matrix.transpose(self.didv_data)
+        # Plotting the CITS slice from the multiple I(V) curves selected
+        if axes_type == 'Axes limit':
+            cits_slice = ax.imshow(img, cmap="viridis", aspect='auto', interpolation='gaussian', origin='lower',
+                                   norm=LogNorm(vmin=1e-14, vmax=didv_lim*1e-12),
+                                   extent=[0, self.num_of_selected_files, np.min(self.xcrop_v_dat[0]),
+                                           np.max(self.xcrop_v_dat[0])])
+        else:
+            cits_slice = ax.imshow(img, cmap="viridis", aspect='auto', interpolation='gaussian', origin='lower',
+                                   norm=LogNorm(vmin=1e-14, vmax=1e-10),
+                                   extent=[0, self.num_of_selected_files, np.min(self.xcrop_v_dat[0]),
+                                           np.max(self.xcrop_v_dat[0])])
+        # Plotting the associated colorbar
+        cbar = plt.colorbar(cits_slice, fraction=0.046, pad=0.01)
+        cbar.ax.set_ylabel('dI/dV [A/V]', fontsize=14)
+        # Shade in the areas between the band-gap uncertainty lines
+        X = np.array([0, self.num_of_selected_files])
+        vbm = np.array([self.gap_info['VBM'], self.gap_info['VBM']])
+        vbm2s = np.array([self.gap_info['VBM + 2 sigma'], self.gap_info['VBM + 2 sigma']])
+        cbm = np.array([self.gap_info['CBM'], self.gap_info['CBM']])
+        cbm2s = np.array([self.gap_info['CBM + 2 sigma'], self.gap_info['CBM + 2 sigma']])
+        plt.fill_between(X, vbm, vbm2s, color=[0, 0.6, 0], alpha=0.3)
+        plt.fill_between(X, cbm, cbm2s, color=[0.6, 0, 0], alpha=0.3)
+        # Add text for the VBM and CBM locations
+        plt.text(0, self.gap_info['VBM + 2 sigma'], 'VBM 2 $\\sigma$', fontsize=14, color='white')
+        plt.text(0, self.gap_info['CBM + 2 sigma'], 'CBM 2 $\\sigma$', fontsize=14, color='white')
+        # Limit the axes if selected by the user
+        if axes_type == 'Axes limit':
+            plt.ylim(vbias_lims[0], vbias_lims[1])
 
     def get_widgets(self):
         """
@@ -569,13 +878,15 @@ class STS(object):
                                                                    flex_flow='row', align_items='stretch'))
 
         # Selection Slider widget to fix the current axes limits
-        i_limits_select_2 = ipy.SelectionSlider(options=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100],
+        i_limits_select_2 = ipy.SelectionSlider(options=[0.001, 0.003, 0.005, 0.007, 0.01, 0.03, 0.05, 0.07, 0.1, 0.3,
+                                                         0.5, 0.7, 1, 30, 50, 70, 100],
                                                 value=1, description='$I_{tunn}$ [$nA$]:', continuous_update=False,
                                                 layout=ipy.Layout(width='97%', display='flex',
                                                                   flex_flow='row', align_items='stretch'))
 
         # Float Range Slider widget to fix the current axes limits
-        didv_limits_select_2 = ipy.SelectionSlider(options=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100],
+        didv_limits_select_2 = ipy.SelectionSlider(options=[0.001, 0.003, 0.005, 0.007, 0.01, 0.03, 0.05, 0.07, 0.1,
+                                                            0.3, 0.5, 0.7, 1, 30, 50, 70, 100],
                                                    value=1, description='$dI/dV$ [$pA/V$]: ',
                                                    continuous_update=False,
                                                    layout=ipy.Layout(width='97%', display='flex',
@@ -608,12 +919,10 @@ class STS(object):
         Updates the I(V) curves and analysis using the defined widgets.
         """
 
-        # NOTES: ADD THE OPTION TO CHANGE THE BINOMIAL SMOOTHING COEFFICIENT
-
-        # Setting the attribute equal to the files selected
+        # Obtain the files that have been selected by the user
         self.selected_files = chosen_data
 
-        # Extracting the chosen data
+        # Extracting the data from the files
         self.selected_data_extract()
         # Perform cross-correlation analysis between different I(V) curves
         self.selected_data_cross_correlation()
@@ -621,278 +930,76 @@ class STS(object):
         self.selected_data_crop(vbias_crop)
 
         # Update the data analysis based on the user interaction
+        # - If the user selects Intermediate or Point STS analysis
         self.sts_analysis(retrace, smooth, smooth_order)
-
         # Update the band-gap information based on the user interaction
         self.sts_egap_finder(e_gap)
-        # - Extracting the average band-gap line
-        v_gap = np.array([self.gap_info['VBM'], self.gap_info['Egap centre'], self.gap_info['CBM']])
-        didv_gap = np.ones(len(v_gap)) * self.gap_info['Mean dIdV']
-        # - Extracting the 1-sigma band-gap line
-        v_gap_sigma1 = np.array(
-            [self.gap_info['VBM + 1 sigma'], self.gap_info['Egap centre'], self.gap_info['CBM + 1 sigma']])
-        didv_gap_sigma1 = np.ones(len(v_gap_sigma1)) * self.gap_info['Mean dIdV + 1 sigma']
-        # - Extracting the 2-sigma band-gap line
-        v_gap_sigma2 = np.array(
-            [self.gap_info['VBM + 2 sigma'], self.gap_info['Egap centre'], self.gap_info['CBM + 2 sigma']])
-        didv_gap_sigma2 = np.ones(len(v_gap_sigma2)) * self.gap_info['Mean dIdV + 2 sigma']
 
-        # Update the CBM/VBM statistics based on user interaction
-        # self.sts_cbm_vbm_stats()
-
-        # Update the line profile displacements of the STS curves
-
-        # Defining the functions local constants
-        # - Determine the dIdV variations
-        didv_plusvar = self.didv_data + self.i_var
-
-        # - Define a figure object with a certain size
+        # Define a figure object with a certain size
         plt.subplots(figsize=(20, 10))
 
-        # DEFINE THE PATH IF INTERMEDIATE PLOTS ANALYSIS IS SELECTED
+        # 1 - Defining the analysis stream when intermediate plots is selected
         if analysis_type == 'Intermediate plots':
-            # Plot and format the raw-spectroscopy curves
-            plt.subplot(1, 3, 1)
-            plt.title("Raw I(V) curves", fontsize=20, fontweight="bold")
-            plt.xlabel("Voltage bias [V]", fontsize=19)
-            plt.ylabel("Current [A]", fontsize=19)
-            plt.axhline(0, color='gray', linewidth=2.5)
-            plt.axvline(0, color='gray', linewidth=2.5)
-            plt.grid(True)
-            # - Plot all of the raw I(V) curves that are selected
-            for i in range(self.num_of_selected_files):
-                trace_alpha = 0.6
-                retrace_alpha = 0.6
-                if retrace == "Trace only":
-                    retrace_alpha = 0.05
-                elif retrace == "Retrace only":
-                    trace_alpha = 0.05
-                plt.plot(self.xcrop_v_dat[i], self.xcrop_i_dat[i][0], 'k.-', linewidth=1.0, markersize=4.5,
-                         alpha=trace_alpha, label='Trace')
-                plt.plot(self.xcrop_v_dat[i], self.xcrop_i_dat[i][1], 'b.-', linewidth=1.0, markersize=4.5,
-                         alpha=retrace_alpha, label='Retrace')
-            # - If more than 1 file is selected, plot the effects of cross-correlation
-            if len(self.v_outliers) > 1:
-                plt.plot(self.v_outliers, self.i_outliers, '.', markersize=4.5,
-                         color='gray', alpha=0.2, label='Omitted')
-                plt.legend(handles=list([patch.Patch(color='black', label='Trace'),
-                                         patch.Patch(color='blue', label='Retrace'),
-                                         patch.Patch(color='gray', label='Omitted')]),
-                           loc='best', prop={'size': 12})
-            else:
-                plt.legend(handles=list([patch.Patch(color='black', label='Trace'),
-                                         patch.Patch(color='blue', label='Retrace')]),
-                           loc='best', prop={'size': 12})
-            # - If axes limit is selected, plot the effects of this
-            if axes_type == 'Axes limit' or axes_type == 'Axes limit and crop':
-                plt.xlim(vbias_lims[0], vbias_lims[1])
-                plt.ylim(i_lim * -1e-9, i_lim * 1e-9)
-
-            # Plot and format the mean spectroscopy curves
-            plt.subplot(3, 3, 2)
-            plt.title("1 - Averaged", fontsize=13, fontweight="bold")
-            plt.ylabel("Current [$A$]", fontsize=19)
-            plt.axhline(0, color='gray', linewidth=2.5)
-            plt.axvline(0, color='gray', linewidth=2.5)
-            plt.grid(True)
-            plt.plot(self.xcrop_v_dat[0], self.mean_i_data, 'k.-', linewidth=1.0, markersize=4.5)
-            if axes_type == 'Axes limit' or axes_type == 'Axes limit and crop':
-                plt.xlim(vbias_lims[0], vbias_lims[1])
-                plt.ylim(i_lim * -1e-9, i_lim * 1e-9)
-
-            # Define and label the mean, smoothed spectroscopy curves
-            plt.subplot(3, 3, 5)
-            plt.title("2 -" + str(smooth) + " Smoothed", fontsize=13, fontweight="bold")
-            plt.ylabel("Current [$A$]", fontsize=19)
-            plt.axhline(0, color='gray', linewidth=2.5)
-            plt.axvline(0, color='gray', linewidth=2.5)
-            plt.grid(True)
-            plt.plot(self.xcrop_v_dat[0], self.smooth_i_data, 'k.-', linewidth=1.0, markersize=4.5)
-            if axes_type == 'Axes limit' or axes_type == 'Axes limit and crop':
-                plt.xlim(vbias_lims[0], vbias_lims[1])
-                plt.ylim(i_lim * -1e-9, i_lim * 1e-9)
-
-            # Define and label the mean, smoothed and differentiated spectroscopy curves
-            plt.subplot(3, 3, 8)
-            plt.title("3 - Differentiated", fontsize=13, fontweight="bold")
-            plt.xlabel("Voltage bias [$V$]", fontsize=19)
-            plt.ylabel("dI/dV [$A/V$]", fontsize=19)
-            plt.axhline(0, color='gray', linewidth=2.5)
-            plt.axvline(0, color='gray', linewidth=2.5)
-            plt.grid(True)
-            plt.plot(self.xcrop_v_dat[0][1:], self.didv_data, 'k.-', linewidth=1.0, markersize=4.5)
-            if axes_type == 'Axes limit' or axes_type == 'Axes limit and crop':
-                plt.xlim(vbias_lims[0], vbias_lims[1])
-                plt.ylim(i_lim * -1e-9, i_lim * 1e-9)
-
-            # Define and label the mean, smoothed and differentiated with semi-log y axes spectroscopy curves
+            # - Plot the raw spectroscopy curves
+            ax1 = plt.subplot(1, 3, 1)
+            self.iv_plot(ax1, retrace, axes_type, vbias_lims, i_lim)
+            # - Plot the intermediate analysis curves
+            ax2 = plt.subplot(3, 3, 2)
+            ax3 = plt.subplot(3, 3, 5, sharex=ax2, sharey=ax2)
+            ax4 = plt.subplot(3, 3, 8, sharex=ax3)
+            self.iv_int_plots(ax2, ax3, ax4, smooth, axes_type, vbias_lims, i_lim, didv_lim)
+            # - Plot the final dIdV curve
             ax5 = plt.subplot(1, 3, 3)
-            plt.title("Analysed dI(V)/dV ", fontsize=20, fontweight="bold")
+            self.didv_plot(ax5, axes_type, vbias_lims, didv_lim)
             ax5.yaxis.tick_right()
             ax5.yaxis.set_label_position("right")
-            plt.xlabel("Voltage bias [$V$]", fontsize=19)
-            plt.ylabel("dI/dV [$A/V$]", fontsize=19)
-            plt.axvline(0, color='gray', linewidth=2.5)
-            plt.grid(True, which='minor')
-            plt.grid(True, which='major')
-            plt.semilogy(self.xcrop_v_dat[0][1:], self.didv_data, 'k.-', linewidth=2.0, markersize=4.5)
-            if axes_type == 'Axes limit' or axes_type == 'Axes limit and crop':
-                plt.xlim(vbias_lims[0], vbias_lims[1])
-                plt.ylim(ymax=didv_lim * 1e-12)
-            # Plotting the variance associated with dIdV
-            plt.semilogy(self.xcrop_v_dat[0][1:], didv_plusvar, '-', linewidth=1.0, color=[0.3, 0.3, 0.3], alpha=0.3)
-            plt.fill_between(self.xcrop_v_dat[0][1:], self.didv_data, didv_plusvar, color=[0.6, 0.6, 0.6], alpha=0.3)
-            plt.legend(handles=list([patch.Patch(color='black', label='dI/dV'),
-                                     patch.Patch(color=[0.3, 0.3, 0.3], alpha=0.3, label='Variance')]),
-                       loc='best', prop={'size': 12})
-            # Plot the best estimates for the band-gap, VBM and CBM edges
-            # - Plot the band-gap lines and middle position points
-            plt.plot(v_gap, didv_gap, '-', linewidth=6, markersize=10, color=[0, 0, 0.3])
-            plt.plot(v_gap_sigma1, didv_gap_sigma1, '-', linewidth=5, markersize=10, color=[0, 0, 0.6])
-            plt.plot(v_gap_sigma2, didv_gap_sigma2, '-', linewidth=4, markersize=8, color=[0, 0, 0.9])
-            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0, 0, 0.3])
-            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
-                     color=[0, 0, 0.6])
-            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
-                     color=[0, 0, 0.9])
-            # - Plot the VBM position points
-            plt.plot(self.gap_info['VBM'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0, 0.3, 0])
-            plt.plot(self.gap_info['VBM + 1 sigma'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
-                     color=[0, 0.6, 0])
-            plt.plot(self.gap_info['VBM + 2 sigma'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
-                     color=[0, 0.9, 0])
-            # - Plot the CBM position points
-            plt.plot(self.gap_info['CBM'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0.3, 0, 0])
-            plt.plot(self.gap_info['CBM + 1 sigma'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
-                     color=[0.6, 0, 0])
-            plt.plot(self.gap_info['CBM + 2 sigma'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
-                     color=[0.9, 0, 0])
-            # Shade in the areas between the band-gap uncertainty lines
-            xshade1 = np.array([v_gap[0], v_gap_sigma1[0], v_gap_sigma1[-1], v_gap[-1]])
-            yshade1 = np.array([didv_gap[0], didv_gap_sigma1[0], didv_gap_sigma1[-1], didv_gap[-1]])
-            plt.fill_between(xshade1, yshade1, color=[0, 0, 0.6], alpha=0.3)
-            xshade2 = np.array([v_gap_sigma1[0], v_gap_sigma2[0], v_gap_sigma2[-1], v_gap_sigma1[-1]])
-            yshade2 = np.array([didv_gap_sigma1[0], didv_gap_sigma2[0], didv_gap_sigma2[-1], didv_gap_sigma1[-1]])
-            plt.fill_between(xshade2, yshade2, color=[0, 0, 0.9], alpha=0.3)
+            ax5.set_title('Average dI/dV curve', fontsize=20, fontweight="bold")
 
-        # DEFINE THE PATH IF POINT STS ANALYSIS IS SELECTED
+        # 2 - Defining the analysis stream when point sts is selected
         elif analysis_type == 'Point STS':
-            # Plot and format the raw-spectroscopy curves
-            plt.subplot(1, 2, 1)
-            plt.title("Raw I(V) curves", fontsize=20, fontweight="bold")
-            plt.xlabel("Voltage bias [$V$]", fontsize=19)
-            plt.ylabel("Current [$A$]", fontsize=19)
-            plt.axhline(0, color='gray', linewidth=2.5)
-            plt.axvline(0, color='gray', linewidth=2.5)
-            plt.grid(True)
-            # - Plot all of the raw I(V) curves that are selected
-            for i in range(self.num_of_selected_files):
-                trace_alpha = 0.6
-                retrace_alpha = 0.6
-                if retrace == "Trace only":
-                    retrace_alpha = 0.05
-                elif retrace == "Retrace only":
-                    trace_alpha = 0.05
-                plt.plot(self.xcrop_v_dat[i], self.xcrop_i_dat[i][0], 'k.-', linewidth=1.0, markersize=4.5,
-                         alpha=trace_alpha, label='Trace')
-                plt.plot(self.xcrop_v_dat[i], self.xcrop_i_dat[i][1], 'b.-', linewidth=1.0, markersize=4.5,
-                         alpha=retrace_alpha, label='Retrace')
-            # - If more than 1 file is selected, plot the effects of cross-correlation
-            if len(self.v_outliers) > 1:
-                plt.plot(self.v_outliers, self.i_outliers, '.', markersize=4.5,
-                         color='gray', alpha=0.2, label='X-corr deleted')
-                plt.legend(handles=list([patch.Patch(color='black', label='Trace'),
-                                         patch.Patch(color='blue', label='Retrace'),
-                                         patch.Patch(color='gray', label='Omitted')]),
-                           loc='best', prop={'size': 12})
-            else:
-                plt.legend(handles=list([patch.Patch(color='black', label='Trace'),
-                                         patch.Patch(color='blue', label='Retrace')]),
-                           loc='best', prop={'size': 12})
-            # - If axes limit is selected, plot the effects of this
-            if axes_type == 'Axes limit' or axes_type == 'Axes limit and crop':
-                plt.xlim(vbias_lims[0], vbias_lims[1])
-                plt.ylim(i_lim * -1e-9, i_lim * 1e-9)
-
-            # Define and label the mean, smoothed and differentiated with semi-log y axes spectroscopy curves
-            ax5 = plt.subplot(1, 2, 2)
-            plt.title("Analysed dI(V)/dV ", fontsize=20, fontweight="bold")
-            ax5.yaxis.tick_right()
-            ax5.yaxis.set_label_position("right")
-            plt.xlabel("Voltage bias [$V$]", fontsize=19)
-            plt.ylabel("dI/dV [$A/V$]", fontsize=19)
-            plt.axvline(0, color='gray', linewidth=2.5)
-            plt.grid(True, which='minor')
-            plt.grid(True, which='major')
-            plt.semilogy(self.xcrop_v_dat[0][1:], self.didv_data, 'k.-', linewidth=2.0, markersize=4.5)
-            if axes_type == 'Axes limit' or axes_type == 'Axes limit and crop':
-                plt.xlim(vbias_lims[0], vbias_lims[1])
-                plt.ylim(ymax=didv_lim * 1e-12)
-            plt.legend(handles=list([patch.Patch(color='black', label='dI/dV'),
-                                     patch.Patch(color=[0.3, 0.3, 0.3], alpha=0.3, label='Variance')]),
-                       loc='best', prop={'size': 12})
-            # Plotting the variance associated with dIdV
-            plt.semilogy(self.xcrop_v_dat[0][1:], didv_plusvar, '-', linewidth=1.0, color=[0.3, 0.3, 0.3], alpha=0.3)
-            plt.fill_between(self.xcrop_v_dat[0][1:], self.didv_data, didv_plusvar, color=[0.6, 0.6, 0.6], alpha=0.3)
-
-            # Plot the best estimates for the band-gap, VBM and CBM edges
-            # - Plot the band-gap lines and middle position points
-            plt.plot(v_gap, didv_gap, '-', linewidth=6, markersize=10, color=[0, 0, 0.3])
-            plt.plot(v_gap_sigma1, didv_gap_sigma1, '-', linewidth=5, markersize=10, color=[0, 0, 0.6])
-            plt.plot(v_gap_sigma2, didv_gap_sigma2, '-', linewidth=4, markersize=8, color=[0, 0, 0.9])
-            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0, 0, 0.3])
-            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
-                     color=[0, 0, 0.6])
-            plt.plot(self.gap_info['Egap centre'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
-                     color=[0, 0, 0.9])
-            # - Plot the VBM position points
-            plt.plot(self.gap_info['VBM'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0, 0.3, 0])
-            plt.plot(self.gap_info['VBM + 1 sigma'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
-                     color=[0, 0.6, 0])
-            plt.plot(self.gap_info['VBM + 2 sigma'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
-                     color=[0, 0.9, 0])
-            # - Plot the CBM position points
-            plt.plot(self.gap_info['CBM'], self.gap_info['Mean dIdV'], 'o', markersize=10, color=[0.3, 0, 0])
-            plt.plot(self.gap_info['CBM + 1 sigma'], self.gap_info['Mean dIdV + 1 sigma'], 'o', markersize=10,
-                     color=[0.6, 0, 0])
-            plt.plot(self.gap_info['CBM + 2 sigma'], self.gap_info['Mean dIdV + 2 sigma'], 'o', markersize=10,
-                     color=[0.9, 0, 0])
-            # Shade in the areas between the band-gap uncertainty lines
-            xshade1 = np.array([v_gap[0], v_gap_sigma1[0], v_gap_sigma1[-1], v_gap[-1]])
-            yshade1 = np.array([didv_gap[0], didv_gap_sigma1[0], didv_gap_sigma1[-1], didv_gap[-1]])
-            plt.fill_between(xshade1, yshade1, color=[0, 0, 0.6], alpha=0.3)
-            xshade2 = np.array([v_gap_sigma1[0], v_gap_sigma2[0], v_gap_sigma2[-1], v_gap_sigma1[-1]])
-            yshade2 = np.array([didv_gap_sigma1[0], didv_gap_sigma2[0], didv_gap_sigma2[-1], didv_gap_sigma1[-1]])
-            plt.fill_between(xshade2, yshade2, color=[0, 0, 0.9], alpha=0.3)
-
-            # Add some text that gives the band-gap information
+            # - Plot the raw spectroscopy curves
+            ax1 = plt.subplot(1, 2, 1)
+            self.iv_plot(ax1, retrace, axes_type, vbias_lims, i_lim)
+            # - Plot the final dIdV curve
+            ax2 = plt.subplot(1, 2, 2)
+            self.didv_plot(ax2, axes_type, vbias_lims, didv_lim, True)
+            ax2.yaxis.tick_right()
+            ax2.yaxis.set_label_position("right")
+            ax2.set_title('Average dI/dV curve', fontsize=20, fontweight="bold")
+            # - Add some text that gives the band-gap information
             plt.gcf().text(0.95, 0.85, '$E_{GAP}$ + $0\\sigma$ = ' + str(self.gap_info['Egap']) + 'V',
                            fontsize=15, color=[0, 0, 0.3])
             plt.gcf().text(0.95, 0.82, '$E_{GAP}$ + $1\\sigma$ = ' + str(self.gap_info['Egap + 1 sigma']) + 'V',
                            fontsize=15, color=[0, 0, 0.6])
             plt.gcf().text(0.95, 0.79, '$E_{GAP}$ + $2\\sigma$ = ' + str(self.gap_info['Egap + 2 sigma']) + 'V',
                            fontsize=15, color=[0, 0, 0.9])
-            # Add some text that gives the VBM information
+            # - Add some text that gives the VBM information
             plt.gcf().text(0.95, 0.74, '$VBM$ = ' + str(self.gap_info['VBM']) + 'V', fontsize=15, color=[0, 0.3, 0])
             plt.gcf().text(0.95, 0.71, '$VBM$ + $1\\sigma$ = ' + str(self.gap_info['VBM + 1 sigma']) + 'V',
                            fontsize=15, color=[0, 0.6, 0])
             plt.gcf().text(0.95, 0.68, '$VBM$ + $2\\sigma$ = ' + str(self.gap_info['VBM + 2 sigma']) + 'V',
                            fontsize=15, color=[0, 0.9, 0])
-            # Add some text that gives the CBM information
+            # - Add some text that gives the CBM information
             plt.gcf().text(0.95, 0.63, '$CBM$ = ' + str(self.gap_info['CBM']) + 'V', fontsize=15, color=[0.3, 0, 0])
             plt.gcf().text(0.95, 0.60, '$CBM$ + $1\\sigma$ = ' + str(self.gap_info['CBM + 1 sigma']) + 'V',
                            fontsize=15, color=[0.6, 0, 0])
             plt.gcf().text(0.95, 0.57, '$CBM$ + $2\\sigma$ = ' + str(self.gap_info['CBM + 2 sigma']) + 'V',
                            fontsize=15, color=[0.9, 0, 0])
-            # Add some text about the conductance information
+            # - Add some text about the conductance information
             didv_avg = self.gap_info['Mean dIdV']
             didv_sigma = self.gap_info['Mean dIdV + 1 sigma'] - self.gap_info['Mean dIdV']
             plt.gcf().text(0.95, 0.52, '$dI/dV_{avg}$ = %.2e A/V' % didv_avg, fontsize=15)
             plt.gcf().text(0.95, 0.49, '$dI/dV_{\\sigma}$ = %.2e A/V' % didv_sigma, fontsize=15)
 
-        # DEFINE THE PATH IF LINE STS ANALYSIS IS SELECTED
+        # 3 - Defining the analysis stream when line sts is selected
         elif analysis_type == 'Line STS':
-            print('Line spectroscopy')
+            # Plot all the final dIdV curves
+            ax1 = plt.subplot(1, 2, 1)
+            # - Plot the average dI/dV curve
+            self.didv_plot(ax1, axes_type, vbias_lims, didv_lim, True, True)
+            # Plot and format the
+            ax2 = plt.subplot(1, 2, 2)
+            self.didv_image(ax2, axes_type, vbias_lims, didv_lim)
 
         # Show the figure that has been created
         plt.show()
@@ -927,3 +1034,4 @@ class STS(object):
 
         # Display the final output of the widget interaction
         display(self.output.children[-1])
+
