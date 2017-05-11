@@ -8,9 +8,10 @@ from IPython.display import display
 import flatfile_3 as ff
 
 # Information about the "stm_analysis.py" module
-__version__ = "1.11"
-__date__ = "25th March 2017"
+__version__ = "2.00"
+__date__ = "10th May 2017"
 __status__ = "Pending"
+
 __authors__ = "Procopi Constantinou & Tobias Gill"
 __email__ = "procopios.constantinou.16@ucl.ac.uk"
 
@@ -64,7 +65,7 @@ class DataSelection(object):
                                              value=self.folder_list[0],
                                              layout=ipy.Layout(display='flex', flex_flow='row',
                                                                align_items='stretch', align_content='stretch',
-                                                               width='', height='', justify_content='center'))
+                                                               width='100%', height='', justify_content='center'))
         # Defining a global widget box to hold all of the widgets
         self.widgets = directory_select
 
@@ -798,7 +799,7 @@ class STS(object):
                                            np.max(self.xcrop_v_dat[0])])
         else:
             cits_slice = ax.imshow(img, cmap="viridis", aspect='auto', interpolation='gaussian', origin='lower',
-                                   norm=LogNorm(vmin=1e-14, vmax=1e-10),
+                                   norm=LogNorm(vmin=1e-14, vmax=1e-11),
                                    extent=[0, self.num_of_selected_files, np.min(self.xcrop_v_dat[0]),
                                            np.max(self.xcrop_v_dat[0])])
         # Plotting the associated colorbar
