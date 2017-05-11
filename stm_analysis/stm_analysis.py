@@ -792,7 +792,7 @@ class STS(object):
         ax.yaxis.grid(which="major")
         img = np.matrix.transpose(self.didv_data)
         # Plotting the CITS slice from the multiple I(V) curves selected
-        if axes_type == 'Axes limit':
+        if axes_type == 'Axes limit' or axes_type == 'Image contrast':
             cits_slice = ax.imshow(img, cmap="viridis", aspect='auto', interpolation='gaussian', origin='lower',
                                    norm=LogNorm(vmin=1e-14, vmax=didv_lim*1e-12),
                                    extent=[0, self.num_of_selected_files, np.min(self.xcrop_v_dat[0]),
@@ -866,7 +866,7 @@ class STS(object):
 
 
         # Radio Buttons widget to allow allow autoscaling, limits and limiting crop
-        limit_type_select_2 = ipy.RadioButtons(options=['Auto-scale axes', 'Axes limit'],
+        limit_type_select_2 = ipy.RadioButtons(options=['Auto-scale axes', 'Axes limit', 'Image contrast'],
                                                value='Auto-scale axes', description="$$Axes\,Controls$$",
                                                continuous_update=False,
                                                layout=ipy.Layout(isplay='inline-flex', flex_flow='column',
@@ -959,14 +959,14 @@ class STS(object):
         # 2 - Defining the analysis stream when point sts is selected
         elif analysis_type == 'Point STS':
             # - Plot the raw spectroscopy curves
-            ax1 = plt.subplot(1, 2, 1)
-            self.iv_plot(ax1, retrace, axes_type, vbias_lims, i_lim)
+            ax6 = plt.subplot(1, 2, 1)
+            self.iv_plot(ax6, retrace, axes_type, vbias_lims, i_lim)
             # - Plot the final dIdV curve
-            ax2 = plt.subplot(1, 2, 2)
-            self.didv_plot(ax2, axes_type, vbias_lims, didv_lim, True)
-            ax2.yaxis.tick_right()
-            ax2.yaxis.set_label_position("right")
-            ax2.set_title('Average dI/dV curve', fontsize=20, fontweight="bold")
+            ax7 = plt.subplot(1, 2, 2)
+            self.didv_plot(ax7, axes_type, vbias_lims, didv_lim, True)
+            ax7.yaxis.tick_right()
+            ax7.yaxis.set_label_position("right")
+            ax7.set_title('Average dI/dV curve', fontsize=20, fontweight="bold")
             # - Add some text that gives the band-gap information
             plt.gcf().text(0.95, 0.85, '$E_{GAP}$ + $0\\sigma$ = ' + str(self.gap_info['Egap']) + 'V',
                            fontsize=15, color=[0, 0, 0.3])
@@ -995,12 +995,12 @@ class STS(object):
         # 3 - Defining the analysis stream when line sts is selected
         elif analysis_type == 'Line STS':
             # Plot all the final dIdV curves
-            ax1 = plt.subplot(1, 2, 1)
+            ax8 = plt.subplot(1, 2, 1)
             # - Plot the average dI/dV curve
-            self.didv_plot(ax1, axes_type, vbias_lims, didv_lim, True, True)
+            self.didv_plot(ax8, axes_type, vbias_lims, didv_lim, True, True)
             # Plot and format the
-            ax2 = plt.subplot(1, 2, 2)
-            self.didv_image(ax2, axes_type, vbias_lims, didv_lim)
+            ax9 = plt.subplot(1, 2, 2)
+            self.didv_image(ax9, axes_type, vbias_lims, didv_lim)
 
         # Show the figure that has been created
         plt.show()
