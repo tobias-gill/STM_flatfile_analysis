@@ -103,11 +103,10 @@ class DataSelection(object):
 
 # 2.0 - Defining the class object that will import the '.Z_flat' files and perform all the necessary topography analysis
 class STT(object):
-    def __init__(self, DS, type):
+    def __init__(self, DS):
         """
         Defines the initialisation of the class object.
         DS:     The 'DataSelection' class object.
-        type:   The type of topography analysis to be peformed.
         """
         # 3.1 -  Extract all the flat-files from the data directory selected
         self.flat_files = glob.glob(DS.selected_path + '*.Z_flat')       # List of all the topography flat file paths
@@ -116,14 +115,262 @@ class STT(object):
         self.all_flatfile_extract()
 
         # 3.2 - Defining all the attributes associated with the topography file selection
+        self.scan_dict = {'up-fwd': 0, 'up-bwd': 1, 'down-fwd': 2, 'down-bwd': 3}  # Dictionary of the scan directions
+        self.scan_dir = None                        # Integer to determine scan direction
+        self.scan_dir_not = None                    # Array of the minor scan directions not selected
+        self.selected_file = None                   # String of the selected topography alias
+        self.selected_pos = None                    # Integer of the array position of the topography file selected
+        self.selected_data = None                   # Array holding the selected topography flat-file classes
 
-        # 3.3 - If type == Leveling, then execute the associated level operations
+        # 3.3 - Defining the leveling and image operations
 
-        # 3.4 - If type == Image, then execute the associated image operations
 
-        # 3.5 - If type == Line, then execute the associated line-profile operations
+        # 3.4 User interaction
+        self.widgets = None                         # Widget object to hold all pre-defined widgets
+        self.get_widgets()                          # Function to get all of the pre-defined widgets
+        self.output = None                          # Output to the user interaction with widgets
+        self.user_interaction()                     # Function to allow continuous user interaction
 
-        # 3.5 - If type == FFT, then execute the associated fast-Fourier transform operations
+    def all_flatfile_extract(self):
+        """
+        Function to extract the file names and total number of topography flat-files within the given directory.
+        """
+        # Initialising the variables to be used
+        file_alias = list()
+        file_num, scan_num, cond = 0, 0, True
+        # Run a while loop until all the data is loaded
+        while cond:
+            scan_num += 1
+            # Run a for-loop over a total of 20 repeats (if more repeats than this are taken, it will need changing)
+            for repeat in range(20):
+                # Define the file name to be searched through
+                fname = "Spectroscopy--" + str(scan_num) + "_" + str(repeat) + ".Z_flat"
+                # If the file name is found, save it and add one unit to the break point
+                if len([x for x in self.flat_files if fname in x]) == 1:
+                    # Making the file name consistent
+                    if scan_num < 10:
+                        file_alias.append("topo 00" + str(scan_num) + "_" + str(repeat))
+                    elif scan_num < 100:
+                        file_alias.append("topo 0" + str(scan_num) + "_" + str(repeat))
+                    else:
+                        file_alias.append("topo " + str(scan_num) + "_" + str(repeat))
+                    # Add one to the file number
+                    file_num += 1
+                if file_num == self.num_of_files:
+                    cond = False
+        # Return the unique identifiers to each I(V) flat file
+        self.file_alias = file_alias
+
+    def selected_data_extract(self, scan_dir):
+        """
+        Function to extract the topography data from the user selected flat-files.
+        """
+        # Extract the position of the topography file selected
+        self.selected_pos = int(self.file_alias.index(self.selected_file))
+        # Extract the topography raw data from the selected flat-file by using the flat-file load function
+        self.selected_data = ff.load(self.flat_files[self.selected_pos])
+        # Extract the scan-direction
+        self.scan_dir = self.scan_dict[scan_dir]
+        # Create an array of the minor scan directions
+        if self.scan_dir == 0:
+            self.scan_dir_not = np.array([1, 2, 3])
+        elif self.scan_dir == 1:
+            self.scan_dir_not = np.array([0, 2, 3])
+        elif self.scan_dir == 2:
+            self.scan_dir_not = np.array([0, 1, 3])
+        elif self.scan_dir == 3:
+            self.scan_dir_not = np.array([0, 1, 2])
+
+    def top_plot(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None, xy_ticks=4, z_ticks=4):
+        """
+        Function to plot STM topographic data.
+
+        Arguments
+        :param flat_file: An instance of an Omicron topography flat file.
+
+        Optional Arguments
+        :param ax:          The axes upon which to make the topography plot.
+        :param scan_dir:    Define which scane direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
+        :param cmap:        Matplotlib colormap name.
+        :param vmin:        Use to manually define the minimum value of the colour scale.
+        :param vmax:        Use to manually define the maximum value of the colour scale.
+        :param xy_ticks:    Use to manually define the number of ticks on the x and y axis.
+        :param z_ticks:     Use to manually define the number of ticks on the colour bar.
+        """
+        # Set minimum value of the topography scan to zero zero and convert to nanometers
+        figure_data = (flat_file[scan_dir].data - np.amin(flat_file[scan_dir].data)) / PC["nano"]
+        # Setting the default parameters for the color-map and color-scale
+        if cmap is None:
+            cmap = 'hot'
+        if vmin is None:
+            vmin = np.amin(figure_data)
+        if vmax is None:
+            vmax = 1.25 * np.amax(figure_data)
+        # Plotting the topography image
+        cax = ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+        # Defining the x- and y-axes ticks
+        # - Extract the x, y units from the flat file
+        xy_units = flat_file[scan_dir].info['unitxy']
+        # - Extract the total number of x, y pixels from the flat file
+        x_res = flat_file[scan_dir].info['xres']
+        y_res = flat_file[scan_dir].info['yres']
+        # - Extract the x, y real units from the flat file
+        x_max = flat_file[scan_dir].info['xreal']
+        y_max = flat_file[scan_dir].info['yreal']
+        # - Setting the x-ticks locations by input
+        ax.set_xticks([x for x in np.arange(0, x_res + 1, x_res / xy_ticks)])
+        # - Setting the x-tick labels by rounding the numbers to one decimal place
+        ax.set_xticklabels(
+            [str(np.round(x, 1)) for x in np.arange(0, x_max + 1, x_max / xy_ticks)])
+        # - Setting the y-ticks locations by input
+        ax.set_yticks([y for y in np.arange(0, y_res + 1, y_res / xy_ticks)])
+        # - Setting the y-tick labels by rounding the numbers to one decimal place
+        ax.set_yticklabels(
+            [str(np.round(y, 1)) for y in np.arange(0, y_max + 1, y_max / xy_ticks)])
+        # Labelling the x- and y-axes with the units given from the flat file
+        ax.set_xlabel(xy_units, size=16, weight='bold')
+        ax.set_ylabel(xy_units, size=16, weight='bold')
+
+        ax.set_title('Set-Points: {voltage} V, {current} pA'.format(voltage=flat_file[scan_dir].info['vgap'],
+                                                                    current=np.round(
+                                                                        flat_file[scan_dir].info[
+                                                                            'current'] * 10 ** 12)))
+
+        cbar_ticks = [z for z in np.arange(vmin, vmax * 1.01, vmax / z_ticks)]  # Define colorbar ticks.
+        cbar_ticklabels = [str(np.round(z, 1)) for z in
+                           np.arange(vmin, vmax + 1, vmax / z_ticks)]   # Label colorbar ticks.
+        cbar = plt.colorbar(cax, ticks=cbar_ticks, fraction=0.046, pad=0.01)      # Create colorbar.
+        cbar.ax.set_yticklabels(cbar_ticklabels, size=16)               # Set colorbar tick labels.
+        cbar.set_label('Height [nm]', size=18, weight='bold')           # Set colorbar label.
+
+    def minor_top_plots(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None, xy_ticks=3):
+        """
+        Function to plot STM topographic data.
+
+        Arguments
+        :param flat_file: An instance of an Omicron topography flat file.
+
+        Optional Arguments
+        :param ax:          The axes upon which to make the topography plot.
+        :param scan_dir:    Define which scane direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
+        :param cmap:        Matplotlib colormap name.
+        :param vmin:        Use to manually define the minimum value of the colour scale.
+        :param vmax:        Use to manually define the maximum value of the colour scale.
+        :param xy_ticks:    Use to manually define the number of ticks on the x and y axis.
+        :param z_ticks:     Use to manually define the number of ticks on the colour bar.
+        """
+        # Set minimum value of the topography scan to zero zero and convert to nanometers
+        figure_data = (flat_file[scan_dir].data - np.amin(flat_file[scan_dir].data)) / PC["nano"]
+        # Setting the default parameters for the color-map and color-scale
+        if cmap is None:
+            cmap = 'hot'
+        if vmin is None:
+            vmin = np.amin(figure_data)
+        if vmax is None:
+            vmax = 1.25 * np.amax(figure_data)
+        # Plotting the topography image
+        ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+        # Defining the x- and y-axes ticks
+        # - Extract the x, y units from the flat file
+        xy_units = flat_file[scan_dir].info['unitxy']
+        # - Extract the total number of x, y pixels from the flat file
+        x_res = flat_file[scan_dir].info['xres']
+        y_res = flat_file[scan_dir].info['yres']
+        # - Extract the x, y real units from the flat file
+        x_max = flat_file[scan_dir].info['xreal']
+        y_max = flat_file[scan_dir].info['yreal']
+        # - Setting the x-ticks locations by input
+        ax.set_xticks([x for x in np.arange(0, x_res + 1, x_res / xy_ticks)])
+        # - Setting the x-tick labels by rounding the numbers to one decimal place
+        ax.set_xticklabels(
+            [str(np.round(x, 1)) for x in np.arange(0, x_max + 1, x_max / xy_ticks)])
+        # - Setting the y-ticks locations by input
+        ax.set_yticks([y for y in np.arange(0, y_res + 1, y_res / xy_ticks)])
+        # - Setting the y-tick labels by rounding the numbers to one decimal place
+        ax.set_yticklabels(
+            [str(np.round(y, 1)) for y in np.arange(0, y_max + 1, y_max / xy_ticks)])
+
+
+    def get_widgets(self):
+        """
+        Creates a variety of widgets to be interacted with for the analysis of the I(V) curves.
+        """
+        # Select Dropdown widget to select the the flat-files to be analysed
+        data_select_0 = ipy.Dropdown(options=self.file_alias, continuous_update=False,
+                                     description="$$Raw\,Topo\,files$$",
+                                     layout=ipy.Layout(display='inline-flex', flex_flow='column',
+                                                       align_items='stretch', align_content='stretch',
+                                                       justify_content='center', height='70px', width="95%"))
+
+        # Toggle Buttons widget to select the type of analysis to be performed
+        scan_type_0 = ipy.ToggleButtons(options=['up-fwd', 'up-bwd', 'down-fwd', 'down-bwd'],
+                                        continuous_update=False, value='up-fwd', description="$$Scan\,type$$",
+                                        layout=ipy.Layout(display='inline-flex', flex_flow='column',
+                                                          align_items='stretch', align_content='stretch',
+                                                          justify_content='center', height='90%', width="95%"))
+
+        # Defining a global widget box to hold all of the widgets
+        self.widgets = ipy.HBox([ipy.VBox([data_select_0, scan_type_0],
+                                          layout=ipy.Layout(display='inline-flex', flex_flow='column',
+                                                            border='solid 0.5px', align_items='stretch',
+                                                            width='15.5%', height='50%'))])
+
+
+
+    def update_function(self, chosen_data, scan_dir):
+        """
+        Updates the topography scans and analysis using the defined widgets.
+        """
+
+        # Obtain the files that have been selected by the user
+        self.selected_file = chosen_data
+
+        # Extracting the data from the files
+        self.selected_data_extract(scan_dir)
+
+        # Define a figure object with a certain size
+        plt.subplots(figsize=(20, 12))
+
+        # Plotting all of the topography scans
+        # - Plot the raw spectroscopy curves
+        ax1 = plt.subplot(1, 1, 1)
+        self.top_plot(self.selected_data, ax1, self.scan_dir)
+        plt.subplots(figsize=(20, 5))
+        # - Plot the intermediate analysis curves
+        ax2 = plt.subplot(1, 3, 1)
+        self.minor_top_plots(self.selected_data, ax2, self.scan_dir_not[0])
+        ax2.set_xlabel('')
+        ax3 = plt.subplot(1, 3, 2, sharex=ax2)
+        self.minor_top_plots(self.selected_data, ax3, self.scan_dir_not[1])
+        ax4 = plt.subplot(1, 3, 3, sharex=ax3)
+        self.minor_top_plots(self.selected_data, ax4, self.scan_dir_not[2])
+
+        # for y in self.selected_data[self.scan_dir].info:
+        #    print(y, ':', self.selected_data[self.scan_dir].info[y])
+
+        # Show the figure that has been created
+        plt.show()
+
+        return
+
+    def user_interaction(self):
+        """
+        Function that allows the continuous interaction of the widgets to update the figure.
+        """
+        # Display the box of custom widgets
+        display(self.widgets)
+
+        # Extracting all of the necessary widgets
+        chosen_data = self.widgets.children[0].children[0]
+        scan_dir = self.widgets.children[0].children[1]
+
+        # Define the attribute to continuously update the figure, given the user interaction
+        self.output = ipy.interactive(self.update_function, chosen_data=chosen_data, scan_dir=scan_dir)
+
+        # Display the final output of the widget interaction
+        display(self.output.children[-1])
+
+
 
 
 # 3.0 - Defining the class object that will import the '.I(V)_flat' files and perform necessary spectroscopy analysis
