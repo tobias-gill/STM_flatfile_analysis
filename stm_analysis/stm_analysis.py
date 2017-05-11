@@ -21,7 +21,7 @@ PC = {"c": 2.99792458e8, "e": 1.6021773e-19, "me": 9.109389e-31, "kB": 1.380658e
       "pico": 1e-12, "nano": 1e-9, "micro": 1e-6}
 
 
-# 1 - Defining the class object to select the parent directory to browse through all the stm data
+# 1.0 - Defining the class object to select the parent directory to browse through all the stm data
 class DataSelection(object):
     def __init__(self, dir_path):
         """
@@ -101,20 +101,45 @@ class DataSelection(object):
         display(self.output.children[-1])
 
 
-# 2.0 - Defining the class object that will import the I(V) flat-files and perform all the necessary analysis
+# 2.0 - Defining the class object that will import the '.Z_flat' files and perform all the necessary topography analysis
+class STT(object):
+    def __init__(self, DS, type):
+        """
+        Defines the initialisation of the class object.
+        DS:     The 'DataSelection' class object.
+        type:   The type of topography analysis to be peformed.
+        """
+        # 3.1 -  Extract all the flat-files from the data directory selected
+        self.flat_files = glob.glob(DS.selected_path + '*.Z_flat')       # List of all the topography flat file paths
+        self.num_of_files = len(self.flat_files)                         # Total number of flat files loaded
+        self.file_alias = None                                           # List of unique identifiers to the flat files
+        self.all_flatfile_extract()
+
+        # 3.2 - Defining all the attributes associated with the topography file selection
+
+        # 3.3 - If type == Leveling, then execute the associated level operations
+
+        # 3.4 - If type == Image, then execute the associated image operations
+
+        # 3.5 - If type == Line, then execute the associated line-profile operations
+
+        # 3.5 - If type == FFT, then execute the associated fast-Fourier transform operations
+
+
+# 3.0 - Defining the class object that will import the '.I(V)_flat' files and perform necessary spectroscopy analysis
 class STS(object):
     def __init__(self, DS):
         """
         Defines the initialisation of the class object.
         DS:     The 'DataSelection' class object.
         """
-        # 2.1 -  Extract all the flat-files from the data directory selected
+        # 3.1 -  Extract all the flat-files from the data directory selected
         self.flat_files = glob.glob(DS.selected_path + '*.I(V)_flat')   # List of all the I(V) flat file paths
         self.num_of_files = len(self.flat_files)                        # Total number of I(V) flat files loaded
         self.file_alias = None                                          # List of unique identifiers to I(V) flat files
         self.all_flatfile_extract()
 
-        # 2.2 - Defining all the attributes associated with the I(V) file selection
+        # 3.2 - Defining all the attributes associated with the I(V) file selection
         self.selected_files = None                          # List of the selected I(V) aliases
         self.num_of_selected_files = None                   # Total number of I(V) flat files selected
         self.selected_pos = None                            # List of the array positions of the I(V) files
@@ -122,17 +147,17 @@ class STS(object):
         self.selected_v_dat = None                          # List of the selected I(V) voltage data domains
         self.selected_i_dat = None                          # List of the selected I(V) current data ranges
 
-        # 2.3 - Passing the selected files through the sts analysis functions
-        # 2.3.1 Cross-correlation analysis attributes
+        # 3.3 - Passing the selected files through the sts analysis functions
+        # 3.3.1 Cross-correlation analysis attributes
         self.xcorr_info = None                              # Dictionary with all the cross-correlation info
         self.xcorr_v_dat = None                             # List of cross-correlated I(V) voltages
         self.xcorr_i_dat = None                             # List of cross-correlated I(V) currents
         self.v_outliers = None                              # 1D array of the outlying voltage points
         self.i_outliers = None                              # 1D array of the outlying current points
-        # 2.3.2 Cropped voltage domain attributes
+        # 3.3.2 Cropped voltage domain attributes
         self.xcrop_v_dat = None                             # Cross-correlated, cropped I(V) voltage list
         self.xcrop_i_dat = None                             # Cross-correlated, cropped  I(V) current list
-        # 2.3.3 STS analysis attributes
+        # 3.3.3 STS analysis attributes
         self.avg_i_data = None                              # Average I(V) curve over all selected files
         self.avgsq_i_data = None                            # Average of the squared I(V) curves over all selected files
         self.smooth_i_data = None                           # Smoothed I(V) curves of all selected files
@@ -142,7 +167,7 @@ class STS(object):
         self.didv_avg_data = None                           # Derivative of the average I(V) curve
         self.didv_avgsq_data = None                         # Derivative of the average of the squares I(V) curve
         self.i_var = None                                   # Variance/uncertainty in the best estimation of dI/dV
-        # 2.3.4 User interaction
+        # 3.3.4 User interaction
         self.widgets = None                                 # Widget object to hold all pre-defined widgets
         self.get_widgets()                                  # Function to get all of the pre-defined widgets
         self.output = None                                  # Output to the user interaction with widgets
@@ -1035,4 +1060,41 @@ class STS(object):
 
         # Display the final output of the widget interaction
         display(self.output.children[-1])
+
+
+# 4.0 - Defining the class object that will import the '.I(Z)_flat' files and perform all the necessary I(Z) analysis
+class STZ(object):
+    def __init__(self, DS):
+        """
+        Defines the initialisation of the class object.
+        DS:     The 'DataSelection' class object.
+        """
+        # 4.1 -  Extract all the flat-files from the data directory selected
+        self.flat_files = glob.glob(DS.selected_path + '*.I(Z)_flat')    # List of all the I(Z) flat file paths
+        self.num_of_files = len(self.flat_files)                         # Total number of I(Z) flat files loaded
+        self.file_alias = None                                           # List of unique identifiers to the flat files
+        self.all_flatfile_extract()
+
+        # 4.2 - Defining all the attributes associated with the I(Z) file selection
+
+
+# 5.0 - Defining the class object that will import the '.I(V)_flat' files associated with CITS maps
+class CITS(object):
+    def __init__(self, DS):
+        """
+        Defines the initialisation of the class object.
+        DS:     The 'DataSelection' class object.
+        """
+        # 5.1 -  Extract all the flat-files from the data directory selected
+        self.flat_files = glob.glob(DS.selected_path + '*.I(Z)_flat')    # List of all the I(Z) flat file paths
+        self.num_of_files = len(self.flat_files)                         # Total number of I(Z) flat files loaded
+        self.file_alias = None                                           # List of unique identifiers to the flat files
+        self.all_flatfile_extract()
+
+        #.data[0].data gives the CITS data formation
+
+
+        # 5.2 - Defining all the attributes associated with the CITS file selection
+
+
 
