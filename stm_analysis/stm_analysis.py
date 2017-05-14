@@ -219,26 +219,65 @@ class STT(object):
 
         return pnt
 
-    def topo_localplane(self, flat_file, x0, x1, y0, y1, scan_dir):
+    def topo_linewise(self, flat_file, scan_dir):
         """
-        Plane flatten an stm image by fitting to a defined area.
-
-            Arguments
-            :param file_data: An instance of an Omicron flat file.
-            :param x0: x-axis plane area initial co-ordinate.
-            :param x1: x-axis plane area final co-ordinate.
-            :param y0: y-axis plane area initial co-ordinate.
-            :param y1: y-axis plane are final co-ordinate.
-
-            Optional Arguments
-            :param scan_dir: flat file scan direction.
+        Create a copied instance of the flat file after linewise flattening an stm image by fitting lines through each 
+        stm line scan, and subsequently subtracting that line from the stm scan line. This subtraction method is best 
+        used for scans that are all on the same terrace.
+        
+        :param flat_file: Instance of an Omicron flat file.
+        :param scan_dir: flat file scan direction.
+        :return: the modified flat-file instance that has been line-subtracted over the scan direction.
         """
+        # Create a new deep copy of the flat file
+        flat_file_copy = deepcopy(flat_file)
+        # Extracting the information from the flat-file
+        topo_info = flat_file_copy[scan_dir].info
+        # - Extract the total number of x, y pixels from the flat file (total number of points in the scan)
+        x_res = topo_info['xres']
+        y_res = topo_info['yres']
+        # - Defining the x domain of the pixels over which the line-subtraction will be performed
+        x_range = np.arange(0, x_res, 1)
+        # Extracting the raw data from the flat-file instance
+        topo_data = flat_file_copy[scan_dir].data
+        # Executing the line-wise subtraction
+        # - Define the flattened topography data array
+        topo_flat_data = np.zeros((y_res, x_res))
+        # - Iterate over all the y-axis pixels
+        for y in range(0, y_res):
+            # Finding the line of best fit through an stm scan line
+            line = np.poly1d(np.polyfit(x_range, topo_data[y], 1))(x_range)
+            # Appending the line subtracted data to the topo_flat_data array
+            topo_flat_data[y] = topo_data[y] - line
+        # Modify the copy of the flat-file instance so that the data over the scan direction is linewise subtracted
+        flat_file_copy[scan_dir].data = topo_flat_data
+        # Return the new amended flat file instance.
+        return flat_file_copy
 
+    def topo_localplane(self, flat_file, scan_dir, x0, x1, y0, y1):
+        """
+        Create a copied instance of the flat file after plane flattening an stm image, by fitting to a defined area.
+        
+        :param file_data: An instance of an Omicron flat file.
+        :param scan_dir: flat file scan direction.
+        :param x0: x-axis plane area initial co-ordinate in real units.
+        :param x1: x-axis plane area final co-ordinate in real units.
+        :param y0: y-axis plane area initial co-ordinate in real units.
+        :param y1: y-axis plane are final co-ordinate in real units.
+        :return: the modified flat-file instance that has been plane-subtracted over the scan direction and given area.
+        """
+        # Create a new deep copy of the flat file
+        flat_file_copy = deepcopy(flat_file)
+        # Extracting the information from the flat-file
+        topo_info = flat_file_copy[scan_dir].info
+        # - Extract the total number of x, y pixels from the flat file (total number of points in the scan)
+        x_res = topo_info['xres']
+        y_res = topo_info['yres']
+
+        # Defining the function to determine the residuals of the fitted plane
         def topo_plane_residuals(param, topo_data, x0, x1, y0, y1):
             """
             Calculate the residuals between the real and fit generated data.
-
-            Arguments
             :param param: List of three fit parameters for the x and y plane gradients, and z offset.
             :param topo_data: numpy array containing topography data.
             :param x0: x-axis plane area initial co-ordinate.
@@ -247,16 +286,18 @@ class STT(object):
             :param y1: y-axis plane area final co-ordinate.
             :return: Plane corrected data.
             """
+            # Extracting the parameter information
             p_x = param[0]
             p_y = param[1]
             p_z = param[2]
-
+            # Determination of the residuals between the real and fitted data
             diff = []
             for y in range(y0, y1):
                 for x in range(x0, x1):
                     diff.append(topo_data[y, x] - (p_x * x + p_y * y + p_z))
             return diff
 
+        # Defining the function to determine the parameters of the fitted plane
         def topo_plane_paramEval(param, x_res, y_res):
             """
             Generate a plane from given parameters.
@@ -270,42 +311,36 @@ class STT(object):
                     topo_plane_fit_data[y, x] = param[0] * x + param[1] * y + param[2]  # Generate plane value.
             return topo_plane_fit_data  # Return entire array.
 
-        # Create a new deep copy of the flat file
-        flat_file_copy = deepcopy(flat_file)
-
+        # If the plane area is not well defined, define the starting points to be zero and end points to be the maxima
         if x0 == x1 or y0 == y1:
             x0 = self.nm2pnt(0, flat_file_copy)
             x1 = self.nm2pnt(self.selected_data[self.scan_dir].info['xreal'], flat_file_copy)
             y0 = self.nm2pnt(0, flat_file_copy, axis='y')
             y1 = self.nm2pnt(self.selected_data[self.scan_dir].info['yreal'], flat_file_copy, axis='y')
+        # If the plane area is well defined, use the given points
         else:
             x0 = self.nm2pnt(x0, flat_file_copy)
             x1 = self.nm2pnt(x1, flat_file_copy)
             y0 = self.nm2pnt(y0, flat_file_copy, axis='y')
             y1 = self.nm2pnt(y1, flat_file_copy, axis='y')
 
-        topo_info = flat_file_copy[scan_dir].info
-
-        x_res = topo_info['xres']
-        y_res = topo_info['yres']
-
+        # Extracting the raw data from the flat-file instance
         topo_data = flat_file_copy[scan_dir].data
-
+        # Initialising the parameters
         param_init = [1, 1, 1]
-
+        # Determination of the plane-subtracted topography data
         topo_plane_lsq = leastsq(topo_plane_residuals, param_init, args=(topo_data, x0, x1, y0, y1))[0]
         topo_plane_fit = topo_plane_paramEval(topo_plane_lsq, x_res, y_res)
         topo_data_flattened = topo_data - topo_plane_fit
         topo_data_flattened = topo_data_flattened - np.amin(topo_data_flattened)
-
+        # Modify the copy of the flat-file instance so that the data over the scan direction is plane subtracted
         flat_file_copy[scan_dir].data = topo_data_flattened
-
         # Return the new amended flat file instance.
         return flat_file_copy
 
     def topo_rotate(self, flat_file, angle):
         """
-        Create a copied instance of the flat file rotated by the given angle.
+        Create a copied instance of the flat file rotated by the given angle (in degrees).
 
         :param flat_file: An instance of an Omicron flat file.
         :param angle: Rotation angle in degrees.
@@ -335,10 +370,10 @@ class STT(object):
         Create a copy of the flat file, cropped by the defined pixel numbers.
 
         :param flat_file: An instance of an Omicron flat file.
-        :param xmin: Crop x-axis initial co-ordinate.
-        :param xmax: Crop x-axis final co-ordinate.
-        :param ymin: Crop y-axis initial co-ordinate.
-        :param ymax: Crop y-axis final co-ordinate.
+        :param xmin: Crop x-axis initial co-ordinate in real units.
+        :param xmax: Crop x-axis final co-ordinate in real units.
+        :param ymin: Crop y-axis initial co-ordinate in real units.
+        :param ymax: Crop y-axis final co-ordinate in real units.
         :return: New flat file instance with cropped image data.
         """
         # Converting from real units to pixel units for the image cropping operation
@@ -371,8 +406,8 @@ class STT(object):
                 scan_dir.info['xreal_min'] = scan_dir.info['xinc'] * xmin
                 scan_dir.info['yreal_min'] = scan_dir.info['yinc'] * ymin
                 # - Set new x- and y-axis image size
-                scan_dir.info['xreal'] = scan_dir.info['xinc'] * scan_dir.info['xres'] + scan_dir.info['xreal_min']
-                scan_dir.info['yreal'] = scan_dir.info['yinc'] * scan_dir.info['yres'] + scan_dir.info['yreal_min']
+                scan_dir.info['xreal'] = scan_dir.info['xreal_min'] + scan_dir.info['xinc'] * scan_dir.info['xres']
+                scan_dir.info['yreal'] = scan_dir.info['yreal_min'] + scan_dir.info['yinc'] * scan_dir.info['yres']
             # - Return new flat file instance.
             return flat_file_copy
         # - If the cropping values of the xmin and xmax are switched, but ymin and ymax are proper
@@ -387,8 +422,8 @@ class STT(object):
                 scan_dir.info['xreal_min'] = scan_dir.info['xinc'] * xmax
                 scan_dir.info['yreal_min'] = scan_dir.info['yinc'] * ymin
                 # - Set new x- and y-axis image size
-                scan_dir.info['xreal'] = scan_dir.info['xinc'] * scan_dir.info['xres'] + scan_dir.info['xreal_min']
-                scan_dir.info['yreal'] = scan_dir.info['yinc'] * scan_dir.info['yres'] + scan_dir.info['yreal_min']
+                scan_dir.info['xreal'] = scan_dir.info['xreal_min'] + scan_dir.info['xinc'] * scan_dir.info['xres']
+                scan_dir.info['yreal'] = scan_dir.info['yreal_min'] + scan_dir.info['yinc'] * scan_dir.info['yres']
                 # - Return new flat file instance.
             return flat_file_copy
         # - If the cropping values of the ymin and ymax are switched, but xmin and xmax are proper
@@ -403,8 +438,8 @@ class STT(object):
                 scan_dir.info['xreal_min'] = scan_dir.info['xinc'] * xmin
                 scan_dir.info['yreal_min'] = scan_dir.info['yinc'] * ymax
                 # - Set new x- and y-axis image size
-                scan_dir.info['xreal'] = scan_dir.info['xinc'] * scan_dir.info['xres'] + scan_dir.info['xreal_min']
-                scan_dir.info['yreal'] = scan_dir.info['yinc'] * scan_dir.info['yres'] + scan_dir.info['yreal_min']
+                scan_dir.info['xreal'] = scan_dir.info['xreal_min'] + scan_dir.info['xinc'] * scan_dir.info['xres']
+                scan_dir.info['yreal'] = scan_dir.info['yreal_min'] + scan_dir.info['yinc'] * scan_dir.info['yres']
                 # - Return new flat file instance.
             return flat_file_copy
         # - If the cropping values of both min and max are switched, avoid error by reversing the crop direction
@@ -419,22 +454,20 @@ class STT(object):
                 scan_dir.info['xreal_min'] = scan_dir.info['xinc'] * xmax
                 scan_dir.info['yreal_min'] = scan_dir.info['yinc'] * ymax
                 # - Set new x- and y-axis image size
-                scan_dir.info['xreal'] = scan_dir.info['xinc'] * scan_dir.info['xres'] + scan_dir.info['xreal_min']
-                scan_dir.info['yreal'] = scan_dir.info['yinc'] * scan_dir.info['yres'] + scan_dir.info['yreal_min']
+                scan_dir.info['xreal'] = scan_dir.info['xreal_min'] + scan_dir.info['xinc'] * scan_dir.info['xres']
+                scan_dir.info['yreal'] = scan_dir.info['yreal_min'] + scan_dir.info['yinc'] * scan_dir.info['yres']
 
             # Return the modified flat-file instance
             return flat_file_copy
 
     def topo_flip(self, flat_file, xflip, yflip):
         """
-        Create a copy of the flat file, cropped by the defined pixel numbers.
+        Create a copy of the flat file, flipped in either the left-right (x) and/or up-down (y) direction.
 
         :param flat_file: An instance of an Omicron flat file.
-        :param xmin: Crop x-axis initial co-ordinate.
-        :param xmax: Crop x-axis final co-ordinate.
-        :param ymin: Crop y-axis initial co-ordinate.
-        :param ymax: Crop y-axis final co-ordinate.
-        :return: New flat file instance with cropped image data.
+        :param xflip: Boolean as to whether a left-right flip should be performed.
+        :param yflip: Boolean as to whether a up-down flip should be performed.
+        :return: New flat file instance, with flipped image data if necessary.
         """
         # Create a new deep copy of the flat file
         flat_file_copy = deepcopy(flat_file)
@@ -465,14 +498,14 @@ class STT(object):
 
     def topo_plot(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None):
         """
-        Function to plot STM topographic data.
+        Function to plot the main, selected STM topographic data.
 
         Arguments
         :param flat_file: An instance of an Omicron topography flat file.
-
-        Optional Arguments
         :param ax:          The axes upon which to make the topography plot.
-        :param scan_dir:    Define which scane direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
+        
+        Optional Arguments
+        :param scan_dir:    Define which scan direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
         :param cmap:        Matplotlib colormap name.
         :param vmin:        Use to manually define the minimum value of the colour scale.
         :param vmax:        Use to manually define the maximum value of the colour scale.
@@ -503,18 +536,20 @@ class STT(object):
         x_res = flat_file[scan_dir].info['xres']
         y_res = flat_file[scan_dir].info['yres']
         # - Extract the x, y real units from the flat file (maximum size of the scan in real, integer units)
-        x_max = int(flat_file[scan_dir].info['xreal'])
-        y_max = int(flat_file[scan_dir].info['yreal'])
+        x_max = flat_file[scan_dir].info['xreal']
+        y_max = flat_file[scan_dir].info['yreal']
+        x_min = flat_file[scan_dir].info['xreal_min']
+        y_min = flat_file[scan_dir].info['yreal_min']
         # - Setting the x-ticks locations by input
         ax.set_xticks([x for x in np.arange(0, x_res + 1, x_res / xy_ticks)])
         # - Setting the x-tick labels by rounding the numbers to one decimal place
         ax.set_xticklabels(
-            [str(np.round(x, 1)) for x in np.arange(0, x_max + 1, x_max / xy_ticks)], fontsize=13)
+            [str(np.round(x, 1)) for x in np.arange(x_min, x_max + 1, (x_max-x_min) / xy_ticks)], fontsize=13)
         # - Setting the y-ticks locations by input
         ax.set_yticks([y for y in np.arange(0, y_res + 1, y_res / xy_ticks)])
         # - Setting the y-tick labels by rounding the numbers to one decimal place
         ax.set_yticklabels(
-            [str(np.round(y, 1)) for y in np.arange(0, y_max + 1, y_max / xy_ticks)], fontsize=13)
+            [str(np.round(y, 1)) for y in np.arange(y_min, y_max + 1, (y_max-y_min) / xy_ticks)], fontsize=13)
         # Labelling the x- and y-axes with the units given from the flat file
         ax.set_xlabel('x /' + xy_units, size=18, weight='bold')
         ax.set_ylabel('y /' + xy_units, size=18, weight='bold')
@@ -523,22 +558,102 @@ class STT(object):
                      fontsize=18, weight='bold')
         # Setting the scale-bar properties
         # - Defining the size and location of the scale bar
-        sbar_xloc_max = x_res - 0.5 * int(x_res / 10)
-        sbar_xloc_min = x_res - 1.5 * int(x_res / 10)
-        sbar_loc_text = sbar_xloc_max - 0.5 * int(x_res / 10)
+        sbar_xloc_max = x_res - 0.5 * (x_res / 10)
+        sbar_xloc_min = x_res - 1.5 * (x_res / 10)
+        sbar_loc_text = sbar_xloc_max - 0.5 * (x_res / 10)
         # - Plotting the scale-bar and its unit text
         ax.plot([sbar_xloc_min, sbar_xloc_max], [0.02 * y_res, 0.02 * y_res], 'k-', linewidth=5)
-        ax.text(sbar_loc_text, 0.03 * y_res, str(np.int(x_max / 10)) + xy_units, weight='bold', ha='center')
+        ax.text(sbar_loc_text, 0.03 * y_res, str(np.round(x_max / 10, 2)) + xy_units, weight='bold', ha='center')
         # Setting the colorbar properties
         # - Define the colorbar ticks
         cbar_ticks = [z for z in np.arange(vmin, vmax * 1.01, vmax / z_ticks)]
         # - Add labels to the colorbar ticks
-        cbar_ticklabels = [str(np.round(z, 1)) for z in
+        cbar_ticklabels = [str(np.round(z, 2)) for z in
                            np.arange(vmin, vmax + 1, vmax / z_ticks)]
         # - Create the colorbar next to the primary topography image
         cbar = plt.colorbar(cax, ticks=cbar_ticks, fraction=0.025, pad=0.01)
         cbar.ax.set_yticklabels(cbar_ticklabels, size=16)                       # Set colorbar tick labels
         cbar.set_label('Height [nm]', size=18, weight='bold')                   # Set colorbar label
+
+    def minimap_topo_plot(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None):
+        """
+        Function to plot the minimap version of the selected STM topographic data to show the area's over which 
+        cropping and plane-subtraction has been peformed.
+
+        Arguments
+        :param flat_file: An instance of an Omicron topography flat file.
+        :param ax:          The axes upon which to make the topography plot.
+        
+        Optional Arguments
+        :param scan_dir:    Define which scan direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
+        :param cmap:        Matplotlib colormap name.
+        :param vmin:        Use to manually define the minimum value of the colour scale.
+        :param vmax:        Use to manually define the maximum value of the colour scale.
+        """
+        # Set minimum value of the topography scan to zero and convert to nanometers
+        figure_data = (flat_file[scan_dir].data - np.amin(flat_file[scan_dir].data)) / PC["nano"]
+        # - Only allowing four x, y and z ticks to appear
+        xy_ticks = 4
+        z_ticks = 4
+        # Setting the default parameters for the color-map and color-scale
+        if cmap is None:
+            cmap = 'hot'
+        if vmin is None:
+            vmin = np.amin(figure_data)
+        if vmax is None:
+            vmax = 1.25 * np.amax(figure_data)
+            # - If no scan is peformed such that vmax is zero, then to avoid an error, set it to one
+            if vmax == 0:
+                vmax = 1
+        # Plotting the topography image
+        cax = ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+        # Extract the x, y units from the flat file
+        xy_units = flat_file[scan_dir].info['unitxy']
+        # Extract the total number of x, y pixels from the flat file (total number of points in the scan)
+        x_res = flat_file[scan_dir].info['xres']
+        y_res = flat_file[scan_dir].info['yres']
+        # Extract the x, y real units from the flat file (maximum size of the scan in real, integer units)
+        x_max = int(flat_file[scan_dir].info['xreal'])
+        y_max = int(flat_file[scan_dir].info['yreal'])
+        # - Setting the x-ticks locations by input
+        ax.set_xticks([x for x in np.arange(0, x_res + 1, x_res / xy_ticks)])
+        # - Setting the x-tick labels by rounding the numbers to one decimal place
+        ax.set_xticklabels(
+            [str(np.round(x, 1)) for x in np.arange(0, x_max + 1, x_max / xy_ticks)], fontsize=10)
+        # - Setting the y-ticks locations by input
+        ax.set_yticks([y for y in np.arange(0, y_res + 1, y_res / xy_ticks)])
+        # - Setting the y-tick labels by rounding the numbers to one decimal place
+        ax.set_yticklabels(
+            [str(np.round(y, 1)) for y in np.arange(0, y_max + 1, y_max / xy_ticks)], fontsize=10)
+        # Labelling the x- and y-axes with the units given from the flat file
+        ax.set_xlabel('x /' + xy_units, size=10, weight='bold')
+        ax.set_ylabel('y /' + xy_units, size=10, weight='bold')
+        # Setting the scale-bar properties
+        # - Defining the size and location of the scale bar
+        sbar_xloc_max = x_res - 0.5 * (x_res / 10)
+        sbar_xloc_min = x_res - 1.5 * (x_res / 10)
+        sbar_loc_text = sbar_xloc_max - 0.5 * (x_res / 10)
+        # - Plotting the scale-bar and its unit text
+        ax.plot([sbar_xloc_min, sbar_xloc_max], [0.02 * y_res, 0.02 * y_res], 'k-', linewidth=5)
+        ax.text(sbar_loc_text, 0.04 * y_res, str(np.round(x_max / 10, 2)) + xy_units, weight='bold', ha='center')
+        # Setting the colorbar properties
+        # - Define the colorbar ticks
+        cbar_ticks = [z for z in np.arange(vmin, vmax * 1.01, vmax / z_ticks)]
+        # - Add labels to the colorbar ticks
+        cbar_ticklabels = [str(np.round(z, 2)) for z in
+                           np.arange(vmin, vmax + 1, vmax / z_ticks)]
+        # - Create the colorbar next to the primary topography image
+        cbar = plt.colorbar(cax, ticks=cbar_ticks, fraction=0.025, pad=0.00, orientation="vertical")
+        cbar.ax.set_yticklabels(cbar_ticklabels, size=10)
+        # Set the x-and y-limits to be equal to the size of the image
+        ax.set_xlim(0, x_res)
+        ax.set_ylim(0, y_res)
+        # Adding a legend to show the color of the plane and cropped polygons
+        ax.legend(handles=list([patch.Patch(color='blue', label='plane'),
+                                patch.Patch(color='green', label='crop')]),
+                  loc='best', prop={'size': 8}, frameon=False)
+        # Adding a grid to the minimap
+        ax.grid(True, color='gray')
 
         #  Add text to the plot for all the important information
         plt.gcf().text(0.35, 0.86, flat_file[scan_dir].info['runcycle'][:-1] + ' : ' +
@@ -555,21 +670,19 @@ class STT(object):
         plt.gcf().text(0.35, 0.69, '[' + str(np.round(x_max, 1)) + 'x' + str(np.round(y_max, 1)) + '] $' + xy_units
                        + '^2$', fontsize=14)
 
-    def minimap_topo_plot(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None, xy_ticks=4):
+    def other_topo_plots(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None):
         """
-        Function to plot STM topographic data.
+        Function to plot all the other STM topographic data that has not been selected.
 
         Arguments
         :param flat_file: An instance of an Omicron topography flat file.
-
-        Optional Arguments
         :param ax:          The axes upon which to make the topography plot.
-        :param scan_dir:    Define which scane direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
+        
+        Optional Arguments
+        :param scan_dir:    Define which scan direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
         :param cmap:        Matplotlib colormap name.
         :param vmin:        Use to manually define the minimum value of the colour scale.
         :param vmax:        Use to manually define the maximum value of the colour scale.
-        :param xy_ticks:    Use to manually define the number of ticks on the x and y axis.
-        :param z_ticks:     Use to manually define the number of ticks on the colour bar.
         """
         # Set minimum value of the topography scan to zero and convert to nanometers
         figure_data = (flat_file[scan_dir].data - np.amin(flat_file[scan_dir].data)) / PC["nano"]
@@ -585,84 +698,24 @@ class STT(object):
                 vmax = 1
         # Plotting the topography image
         cax = ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
-        # Removing the figure axes associated with this figure
-        ax.axis('off')
-        # Extract the x, y units from the flat file
-        xy_units = flat_file[scan_dir].info['unitxy']
+        # Removing all the x- and y-axes ticks
+        ax.axis("off")
         # Extract the total number of x, y pixels from the flat file (total number of points in the scan)
         x_res = flat_file[scan_dir].info['xres']
         y_res = flat_file[scan_dir].info['yres']
-        # Extract the x, y real units from the flat file (maximum size of the scan in real, integer units)
-        x_max = int(flat_file[scan_dir].info['xreal'])
-        y_max = int(flat_file[scan_dir].info['yreal'])
-        # Setting the scale-bar properties
-        # - Defining the size and location of the scale bar
-        sbar_xloc_max = x_res - 0.5 * int(x_res / 10)
-        sbar_xloc_min = x_res - 1.5 * int(x_res / 10)
-        # - Plotting the scale-bar and its unit text
-        ax.plot([sbar_xloc_min, sbar_xloc_max], [0.02 * y_res, 0.02 * y_res], 'k-', linewidth=5)
-
-    def other_topo_plots(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None, xy_ticks=4):
-        """
-        Function to plot STM topographic data.
-
-        Arguments
-        :param flat_file: An instance of an Omicron topography flat file.
-
-        Optional Arguments
-        :param ax:          The axes upon which to make the topography plot.
-        :param scan_dir:    Define which scane direction to use. fwd_up=0, bwd_up=1, fwd_dwn=2, bwd_dwn=3
-        :param cmap:        Matplotlib colormap name.
-        :param vmin:        Use to manually define the minimum value of the colour scale.
-        :param vmax:        Use to manually define the maximum value of the colour scale.
-        :param xy_ticks:    Use to manually define the number of ticks on the x and y axis.
-        :param z_ticks:     Use to manually define the number of ticks on the colour bar.
-        """
-        # Set minimum value of the topography scan to zero and convert to nanometers
-        figure_data = (flat_file[scan_dir].data - np.amin(flat_file[scan_dir].data)) / PC["nano"]
-        # Setting the default parameters for the color-map and color-scale
-        if cmap is None:
-            cmap = 'hot'
-        if vmin is None:
-            vmin = np.amin(figure_data)
-        if vmax is None:
-            vmax = 1.25 * np.amax(figure_data)
-            # - If no scan is peformed such that vmax is zero, then to avoid an error, set it to one
-            if vmax == 0:
-                vmax = 1
-        # Plotting the topography image
-        cax = ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
-        # Defining the x- and y-axes ticks
-        # - Extract the x, y units from the flat file
-        xy_units = flat_file[scan_dir].info['unitxy']
-        # - Extract the total number of x, y pixels from the flat file (total number of points in the scan)
-        x_res = flat_file[scan_dir].info['xres']
-        y_res = flat_file[scan_dir].info['yres']
-        # - Extract the x, y real units from the flat file (maximum size of the scan in real, integer units)
-        x_max = int(flat_file[scan_dir].info['xreal'])
-        y_max = int(flat_file[scan_dir].info['yreal'])
-        # - Setting the x-ticks locations by input
-        ax.set_xticks([x for x in np.arange(0, x_res + 1, x_res / xy_ticks)])
-        # - Setting the x-tick labels by rounding the numbers to one decimal place
-        ax.set_xticklabels(
-            [str(np.round(x, 0)) for x in np.arange(0, x_max + 1, x_max / xy_ticks)], fontsize=13)
-        # - Setting the y-ticks locations by input
-        ax.set_yticks([y for y in np.arange(0, y_res + 1, y_res / xy_ticks)])
-        # - Setting the y-tick labels by rounding the numbers to one decimal place
-        ax.set_yticklabels(
-            [str(np.round(y, 1)) for y in np.arange(0, y_max + 1, y_max / xy_ticks)], fontsize=13)
-        # Labelling the x- and y-axes with the units given from the flat file
-        ax.set_xlabel('x /' + xy_units, size=18, weight='bold')
-        ax.set_ylabel('y /' + xy_units, size=18, weight='bold')
         # Adding a title to the graph
         ax.set_title(flat_file[scan_dir].info['runcycle'][:-1] + ' : ' + self.scan_dict_inv[scan_dir],
-                     fontsize=18, weight='bold')
+                     fontsize=8, weight='bold')
         # Setting the scale-bar properties
         # - Defining the size and location of the scale bar
         sbar_xloc_max = x_res - 0.5 * int(x_res / 10)
         sbar_xloc_min = x_res - 1.5 * int(x_res / 10)
         # - Plotting the scale-bar and its unit text
-        ax.plot([sbar_xloc_min, sbar_xloc_max], [0.02 * y_res, 0.02 * y_res], 'k-', linewidth=5)
+        ax.plot([sbar_xloc_min, sbar_xloc_max], [0.02 * y_res, 0.02 * y_res], 'k-', linewidth=3)
+        # If there is no scan performed, add text to say this
+        if np.sum(np.sum(figure_data)) == 0:
+            ax.text(0.5*x_res, 0.5*y_res, 'NO SCAN TAKEN', fontsize=15, color=[1, 1, 1], weight='bold', rotation=45,
+                    ha='center', va='center')
 
     def get_widgets(self):
         """
@@ -693,32 +746,34 @@ class STT(object):
                                                            justify_content='center', height='30%', width="100%"))
         # Float text widgets to choose the x and y points for the local plane subtraction
         # - Defining all the x and y co-ordinate pairs for local-place selection
-        x0_coord_1 = ipy.FloatText(value=0, description="$x_0$", color='black', continuous_update=False,
+        x0_coord_1 = ipy.IntSlider(value=0, min=0, max=500, description="$x_0$", color='black', continuous_update=False,
                                    layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
-        y0_coord_1 = ipy.FloatText(value=0, description="$y_0$", color='black', continuous_update=False,
+        y0_coord_1 = ipy.IntSlider(value=0, min=0, max=500, description="$y_0$", color='black', continuous_update=False,
                                    layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
-        x1_coord_1 = ipy.FloatText(value=5, description="$x_1$", color='black', continuous_update=False,
+        x1_coord_1 = ipy.IntSlider(value=500, min=0, max=500, description="$x_1$", color='black',
+                                   continuous_update=False,
                                    layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
-        y1_coord_1 = ipy.FloatText(value=5, description="$y_1$", color='black', continuous_update=False,
+        y1_coord_1 = ipy.IntSlider(value=500, min=0, max=500, description="$y_1$", color='black',
+                                   continuous_update=False,
                                    layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
         # Add a label for image cropping
         label_1 = ipy.Label(value='$$Image\,Crop$$ ', layout=ipy.Layout(width='95%', height='auto', display='flex',
                                                                         flex_flow='row', align_items='stretch'))
         # - Defining all the x and y co-ordinate pairs for local-place selection
-        x0_crop_1 = ipy.FloatText(value=0, description="$x_0$", color='black', continuous_update=False,
+        x0_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$x_0$", color='black', continuous_update=False,
                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
-        y0_crop_1 = ipy.FloatText(value=0, description="$y_0$", color='black', continuous_update=False,
+        y0_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$y_0$", color='black', continuous_update=False,
                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
-        x1_crop_1 = ipy.FloatText(value=0, description="$x_1$", color='black', continuous_update=False,
+        x1_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$x_1$", color='black', continuous_update=False,
                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
-        y1_crop_1 = ipy.FloatText(value=0, description="$y_1$", color='black', continuous_update=False,
+        y1_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$y_1$", color='black', continuous_update=False,
                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
 
@@ -728,14 +783,17 @@ class STT(object):
                                                                               align_items='stretch'))
         # Float Slider widget to control the rotation from 0 - 359
         rotation_2 = ipy.FloatSlider(value=0, min=0, max=359, step=0.5, description="$Rotation$: ",
+                                     continuous_update=False,
                                      layout=ipy.Layout(width='100%', height='auto', display='flex',
                                                        flex_flow='row', align_items='stretch'))
         # Slider widget to control the x-skew correction
         xskew_2 = ipy.FloatText(value=0, min=0, max=45, description="$x_{skew}$: ", color='black',
+                                continuous_update=False,
                                 layout=ipy.Layout(width='45%', height='', display='inline-flex', flex_flow='row',
                                                   align_items='stretch', align_content='stretch'))
         # Slider widget to control the y-skew correction
         yskew_2 = ipy.FloatText(value=0, min=0, max=45, description="$y_{skew}$: ", color='black',
+                                continuous_update=False,
                                 layout=ipy.Layout(width='45%', height='', display='inline-flex', flex_flow='row',
                                                   align_items='stretch', align_content='stretch'))
         # Checkbox widget to flip along x or y axes
@@ -745,10 +803,19 @@ class STT(object):
         col_text_2 = ipy.Text(value='hot', description="$$Color-map: $$", color='black', continuous_update=False,
                               layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                 align_items='stretch'))
+        autocontrast_2 = ipy.Checkbox(description="$$Lock\,con.:$$", value=True,
+                                      layout=ipy.Layout(width='95%', height='auto', display='flex',
+                                                        flex_flow='row', align_items='stretch'))
         # Float Range widget that controls the minimum and maximum contrast
-        contrast_2 = ipy.FloatRangeSlider(value=[0, 10], min=0, max=100, step=0.1, description="$$Contrast: $$",
-                                          layout=ipy.Layout(width='95%', height='auto', display='flex',
-                                                            flex_flow='row', align_items='stretch'))
+        coarse_cont_2 = ipy.FloatSlider(value=10, min=0, max=100, step=1, description="$$Coarse\,con.:$$",
+                                        continuous_update=False,
+                                        layout=ipy.Layout(width='95%', height='auto', display='flex',
+                                                          flex_flow='row', align_items='stretch'))
+        # Float Range widget that controls the minimum and maximum contrast
+        fine_cont_2 = ipy.FloatSlider(value=0, min=0, max=1, step=0.01, description="$$Fine\,con.:$$",
+                                      continuous_update=False,
+                                      layout=ipy.Layout(width='95%', height='auto', display='flex',
+                                                        flex_flow='row', align_items='stretch'))
 
         # Defining a global widget box to hold all of the widgets
         self.widgets = ipy.HBox([ipy.VBox([data_select_0, scan_type_0],
@@ -761,18 +828,18 @@ class STT(object):
                                            label_1,
                                            ipy.HBox([x0_crop_1, y0_crop_1]),
                                            ipy.HBox([x1_crop_1, y1_crop_1])],
-                                          layout=ipy.Layout(display='flex', flex_flow='column', align_items='center',
+                                          layout=ipy.Layout(display='flex', flex_flow='column', align_items='stretch',
                                                             width='', height='')),
                                  ipy.VBox([label_2, rotation_2,
                                            ipy.HBox([xflip_2, yflip_2]),
-                                           col_text_2, contrast_2],
+                                           col_text_2, autocontrast_2, coarse_cont_2, fine_cont_2],
                                           layout=ipy.Layout(display='inline-flex', flex_flow='column',
                                                             align_items='stretch', width='34.5%', height='100%'))
                                  ])
 
     def update_function(self, chosen_data, scan_dir, level_type, p_x0, p_x1, p_y0, p_y1,
                         c_x0, c_x1, c_y0, c_y1,
-                        rot, xflip, yflip, colormap, contrast):
+                        rot, xflip, yflip, colormap, autocontrast, coarse_cont, fine_cont):
         """
         Updates the topography scans and analysis using the defined widgets.
         """
@@ -796,32 +863,30 @@ class STT(object):
         self.image_props = {"real plane": np.array([p_x0, p_x1, p_y0, p_y1]),
                             "real crop": np.array([c_x0, c_x1, c_y0, c_y1]),
                             "rotation": rot, "x flip": xflip, "y flip": yflip,
-                            "colormap": colormap, "contrast": contrast}
-
-        # Applying the level operation first
-        if level_type == 'Line-wise':
-            self.leveled_data = self.topo_linewise(self.selected_data, self.scan_dir)
-        elif level_type == 'Local plane':
-            self.leveled_data = self.topo_localplane(self.selected_data, p_x0, p_x1, p_y0, p_y1, self.scan_dir)
-        elif level_type == 'None':
-            self.leveled_data = self.selected_data
-
-        # Applying all of the image operations second
-        topo_f = self.topo_flip(self.leveled_data, xflip, yflip)
-        topo_fr = self.topo_rotate(topo_f, rot)
-        topo_frc = self.topo_crop(topo_fr, c_x0, c_x1, c_y0, c_y1)
-        self.final_data = topo_frc
+                            "colormap": colormap, "contrast": float(coarse_cont + fine_cont)}
 
         # If no background subtraction is performed
         if level_type == 'None':
+            # Executing the level operations
+            self.leveled_data = self.selected_data
+
+            # Executing the image operations
+            topo_f = self.topo_flip(self.leveled_data, xflip, yflip)
+            topo_fr = self.topo_rotate(topo_f, rot)
+            topo_frc = self.topo_crop(topo_fr, c_x0, c_x1, c_y0, c_y1)
+            self.final_data = topo_frc
+
             # Plotting the main topography scan selected
             plt.subplots(figsize=(22, 10))
             ax1 = plt.subplot(1, 2, 2)
-            self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, contrast[0], contrast[1])
+            if autocontrast:
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap)
+            else:
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, self.image_props["contrast"])
 
             # Plotting the minimap of the topography scan selected
             ax2 = plt.subplot(2, 4, 6)
-            self.minimap_topo_plot(self.leveled_data, ax2, self.scan_dir, colormap, contrast[0], contrast[1])
+            self.minimap_topo_plot(self.leveled_data, ax2, self.scan_dir, colormap)
             # - Plotting the area over which the cropping is performed
             ax2.plot([pix_c_x0, pix_c_x1, pix_c_x1, pix_c_x0], [pix_c_y0, pix_c_y0, pix_c_y1, pix_c_y1], 'go',
                      alpha=0.4)
@@ -829,49 +894,91 @@ class STT(object):
                              alpha=0.4)
 
             # Plotting all the other topography scans
-            plt.subplots(figsize=(20, 5))
+            plt.subplots(figsize=(10, 3))
             ax3 = plt.subplot(1, 3, 1)
-            self.other_topo_plots(self.selected_data, ax3, self.scan_dir_not[0], colormap, contrast[0], contrast[1])
+            self.other_topo_plots(self.leveled_data, ax3, self.scan_dir_not[0], colormap)
             ax4 = plt.subplot(1, 3, 2)
-            self.other_topo_plots(self.selected_data, ax4, self.scan_dir_not[1], colormap, contrast[0], contrast[1])
+            self.other_topo_plots(self.leveled_data, ax4, self.scan_dir_not[1], colormap)
             ax5 = plt.subplot(1, 3, 3)
-            self.other_topo_plots(self.selected_data, ax5, self.scan_dir_not[2], colormap, contrast[0], contrast[1])
+            self.other_topo_plots(self.leveled_data, ax5, self.scan_dir_not[2], colormap)
 
         # If line-wise background subtraction is performed
         elif level_type == "Line-wise":
-            print('hey')
+            # Executing the level operations
+            self.leveled_data = self.topo_linewise(self.selected_data, self.scan_dir)
 
-        # If local plane background subtraction is performed
-        elif level_type == "Local plane":
+            # Executing the image operations
+            topo_f = self.topo_flip(self.leveled_data, xflip, yflip)
+            topo_fr = self.topo_rotate(topo_f, rot)
+            topo_frc = self.topo_crop(topo_fr, c_x0, c_x1, c_y0, c_y1)
+            self.final_data = topo_frc
+
             # Plotting the main topography scan selected
             plt.subplots(figsize=(22, 10))
             ax1 = plt.subplot(1, 2, 2)
-            self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, contrast[0], contrast[1])
+            if autocontrast:
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap)
+            else:
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, False, self.image_props["contrast"])
 
             # Plotting the minimap of the topography scan selected
             ax2 = plt.subplot(2, 4, 6)
-            self.minimap_topo_plot(self.leveled_data, ax2, self.scan_dir, colormap, contrast[0], contrast[1])
-            # - Plotting the area over which the plane subtraction is performed
-            ax2.plot([pix_p_x0, pix_p_x1, pix_p_x1, pix_p_x0], [pix_p_y0, pix_p_y0, pix_p_y1, pix_p_y1], 'bo',
-                     alpha=0.4)
-            ax2.fill_between([pix_p_x0, pix_p_x1], [pix_p_y0, pix_p_y0], [pix_p_y1, pix_p_y1], color='blue',
-                             alpha=0.4)
+            self.minimap_topo_plot(self.leveled_data, ax2, self.scan_dir, colormap)
             # - Plotting the area over which the cropping is performed
             ax2.plot([pix_c_x0, pix_c_x1, pix_c_x1, pix_c_x0], [pix_c_y0, pix_c_y0, pix_c_y1, pix_c_y1], 'go',
                      alpha=0.4)
             ax2.fill_between([pix_c_x0, pix_c_x1], [pix_c_y0, pix_c_y0], [pix_c_y1, pix_c_y1], color='green',
                              alpha=0.4)
-
-            plt.subplots(figsize=(20, 5))
-            # - Plot the intermediate analysis curves
+            # Plotting all the other topography scans
+            plt.subplots(figsize=(10, 3))
             ax3 = plt.subplot(1, 3, 1)
-            self.other_topo_plots(self.leveled_data, ax3, self.scan_dir_not[0], colormap, contrast[0], contrast[1])
+            self.other_topo_plots(self.leveled_data, ax3, self.scan_dir_not[0], colormap)
             ax4 = plt.subplot(1, 3, 2)
-            self.other_topo_plots(self.leveled_data, ax4, self.scan_dir_not[1], colormap, contrast[0], contrast[1])
+            self.other_topo_plots(self.leveled_data, ax4, self.scan_dir_not[1], colormap)
             ax5 = plt.subplot(1, 3, 3)
-            self.other_topo_plots(self.leveled_data, ax5, self.scan_dir_not[2], colormap, contrast[0], contrast[1])
+            self.other_topo_plots(self.leveled_data, ax5, self.scan_dir_not[2], colormap)
 
+        # If local plane background subtraction is performed
+        elif level_type == "Local plane":
+            # Executing the level operations
+            self.leveled_data = self.topo_localplane(self.selected_data, self.scan_dir, p_x0, p_x1, p_y0, p_y1)
 
+            # Executing the image operations
+            topo_f = self.topo_flip(self.leveled_data, xflip, yflip)
+            topo_fr = self.topo_rotate(topo_f, rot)
+            topo_frc = self.topo_crop(topo_fr, c_x0, c_x1, c_y0, c_y1)
+            self.final_data = topo_frc
+
+            # Plotting the main topography scan selected
+            plt.subplots(figsize=(22, 10))
+            ax1 = plt.subplot(1, 2, 2)
+            if autocontrast:
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap)
+            else:
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, False, self.image_props["contrast"])
+
+            # Plotting the minimap of the topography scan selected
+            ax2 = plt.subplot(2, 4, 6)
+            self.minimap_topo_plot(self.leveled_data, ax2, self.scan_dir, colormap)
+            # - Plotting the area over which the cropping is performed
+            ax2.plot([pix_c_x0, pix_c_x1, pix_c_x1, pix_c_x0], [pix_c_y0, pix_c_y0, pix_c_y1, pix_c_y1], 'go',
+                     alpha=0.4)
+            ax2.fill_between([pix_c_x0, pix_c_x1], [pix_c_y0, pix_c_y0], [pix_c_y1, pix_c_y1], color='green',
+                             alpha=0.4)
+            # - Plotting the area over which the plane subtraction is performed
+            ax2.plot([pix_p_x0, pix_p_x1, pix_p_x1, pix_p_x0], [pix_p_y0, pix_p_y0, pix_p_y1, pix_p_y1], 'bo',
+                     alpha=0.4)
+            ax2.fill_between([pix_p_x0, pix_p_x1], [pix_p_y0, pix_p_y0], [pix_p_y1, pix_p_y1], color='blue',
+                             alpha=0.4)
+
+            # Plotting all the other topography scans
+            plt.subplots(figsize=(10, 3))
+            ax3 = plt.subplot(1, 3, 1)
+            self.other_topo_plots(self.leveled_data, ax3, self.scan_dir_not[0], colormap)
+            ax4 = plt.subplot(1, 3, 2, sharey=ax3)
+            self.other_topo_plots(self.leveled_data, ax4, self.scan_dir_not[1], colormap)
+            ax5 = plt.subplot(1, 3, 3, sharey=ax4)
+            self.other_topo_plots(self.leveled_data, ax5, self.scan_dir_not[2], colormap)
 
         # Show the figure that has been created
         plt.show()
@@ -904,14 +1011,16 @@ class STT(object):
         xflip = self.widgets.children[2].children[2].children[0]
         yflip = self.widgets.children[2].children[2].children[1]
         colormap = self.widgets.children[2].children[3]
-        contrast = self.widgets.children[2].children[4]
+        autocontrast = self.widgets.children[2].children[4]
+        coarse_cont = self.widgets.children[2].children[5]
+        fine_cont = self.widgets.children[2].children[6]
 
         # Define the attribute to continuously update the figure, given the user interaction
         self.output = ipy.interactive(self.update_function, chosen_data=chosen_data, scan_dir=scan_dir,
                                       level_type=level_type, p_x0=p_x0, p_x1=p_x1, p_y0=p_y0, p_y1=p_y1,
                                       c_x0=c_x0, c_x1=c_x1, c_y0=c_y0, c_y1=c_y1,
-                                      rot=rot, xflip=xflip, yflip=yflip, colormap=colormap,
-                                      contrast=contrast)
+                                      rot=rot, xflip=xflip, yflip=yflip, colormap=colormap, autocontrast=autocontrast,
+                                      coarse_cont=coarse_cont, fine_cont=fine_cont, continous_update=False)
 
         # Display the final output of the widget interaction
         display(self.output.children[-1])
