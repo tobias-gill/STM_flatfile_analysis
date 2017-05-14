@@ -37,7 +37,8 @@ class local_plane():
 
         self.param_init = [1, 1, 1]
 
-        self.topo_plane_lsq = leastsq(self.topo_plane_residuals, self.param_init, args=(self.topo_data, x0, x1, y0, y1))[0]
+        self.topo_plane_lsq = leastsq(self.topo_plane_residuals, self.param_init,
+                                      args=(self.topo_data, x0, x1, y0, y1))[0]
         self.topo_plane_fit = self.topo_plane_paramEval(self.topo_plane_lsq)
         self.topo_data_flattened = self.topo_data - self.topo_plane_fit
         self.topo_data_flattened = self.topo_data_flattened - np.amin(self.topo_data_flattened)
