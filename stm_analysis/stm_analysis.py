@@ -496,7 +496,7 @@ class STT(object):
         else:
             return flat_file_copy
 
-    def topo_plot(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None):
+    def topo_plot(self, flat_file, ax, scan_dir=0, cmap=None, vmin=None, vmax=None, smooth=None):
         """
         Function to plot the main, selected STM topographic data.
 
@@ -509,6 +509,7 @@ class STT(object):
         :param cmap:        Matplotlib colormap name.
         :param vmin:        Use to manually define the minimum value of the colour scale.
         :param vmax:        Use to manually define the maximum value of the colour scale.
+        :param smooth:      If smoothing should be applied.
         """
         # Initialising the constants to be used for plotting
         # - Set minimum value of the topography scan to zero and convert to nanometers
@@ -528,7 +529,11 @@ class STT(object):
                 vmax = 1
 
         # Plotting the topography image
-        cax = ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+        if smooth:
+            cax = ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal',
+                            interpolation="gaussian")
+        else:
+            cax = ax.imshow(figure_data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
         # Defining the x- and y-axes ticks
         # - Extract the x, y units from the flat file
         xy_units = flat_file[scan_dir].info['unitxy']
@@ -734,74 +739,57 @@ class STT(object):
                                                           align_items='stretch', align_content='stretch',
                                                           justify_content='center', height='90%', width="95%"))
 
-        # Add a label for the level operations
-        label_0 = ipy.Label(value='$$Level\,Operations$$ ', continuous_update=False,
-                            layout=ipy.Layout(width='100%', height='', display='flex', flex_flow='row',
-                                              align_items='stretch'))
         # Toggle Buttons widget to select the type of analysis to be performed
-        level_type_1 = ipy.ToggleButtons(options=['None', 'Line-wise', 'Local plane'], value='None', description=" ",
-                                         continuous_update=False,
+        level_type_1 = ipy.ToggleButtons(options=['None', 'Line-wise', 'Local plane'], value='None',
+                                         description='$$Leveling:$$', continuous_update=False,
                                          layout=ipy.Layout(display='inline-flex', flex_flow='row',
-                                                           align_items='center', align_content='center',
-                                                           justify_content='center', height='30%', width="100%"))
+                                                           align_items='stretch', align_content='stretch',
+                                                           height='50%', width="100%"))
         # Float text widgets to choose the x and y points for the local plane subtraction
         # - Defining all the x and y co-ordinate pairs for local-place selection
         x0_coord_1 = ipy.IntSlider(value=0, min=0, max=500, description="$x_0$", color='black', continuous_update=False,
-                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+                                   layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
         y0_coord_1 = ipy.IntSlider(value=0, min=0, max=500, description="$y_0$", color='black', continuous_update=False,
-                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+                                   layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
         x1_coord_1 = ipy.IntSlider(value=500, min=0, max=500, description="$x_1$", color='black',
                                    continuous_update=False,
-                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+                                   layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
         y1_coord_1 = ipy.IntSlider(value=500, min=0, max=500, description="$y_1$", color='black',
                                    continuous_update=False,
-                                   layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+                                   layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                      align_items='stretch'))
+
         # Add a label for image cropping
-        label_1 = ipy.Label(value='$$Image\,Crop$$ ', layout=ipy.Layout(width='95%', height='auto', display='flex',
+        label_2 = ipy.Label(value='$$Image\,Crop:$$ ', layout=ipy.Layout(width='95%', height='auto', display='flex',
                                                                         flex_flow='row', align_items='stretch'))
         # - Defining all the x and y co-ordinate pairs for local-place selection
-        x0_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$x_0$", color='black', continuous_update=False,
-                                  layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+        x0_crop_2 = ipy.IntSlider(value=0, min=0, max=500, description="$x_0$", color='black', continuous_update=False,
+                                  layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
-        y0_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$y_0$", color='black', continuous_update=False,
-                                  layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+        y0_crop_2 = ipy.IntSlider(value=0, min=0, max=500, description="$y_0$", color='black', continuous_update=False,
+                                  layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
-        x1_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$x_1$", color='black', continuous_update=False,
-                                  layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+        x1_crop_2 = ipy.IntSlider(value=0, min=0, max=500, description="$x_1$", color='black', continuous_update=False,
+                                  layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
-        y1_crop_1 = ipy.IntSlider(value=0, min=0, max=500, description="$y_1$", color='black', continuous_update=False,
-                                  layout=ipy.Layout(width='40%', height='', display='flex', flex_flow='row',
+        y1_crop_2 = ipy.IntSlider(value=0, min=0, max=500, description="$y_1$", color='black', continuous_update=False,
+                                  layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
                                                     align_items='stretch'))
 
-        # Add a label for the image properties
-        label_2 = ipy.Label(value='$$Image\,operations$$ ', layout=ipy.Layout(width='95%', height='auto',
-                                                                              display='flex', flex_flow='row',
-                                                                              align_items='stretch'))
         # Float Slider widget to control the rotation from 0 - 359
         rotation_2 = ipy.FloatSlider(value=0, min=0, max=359, step=0.5, description="$Rotation$: ",
                                      continuous_update=False,
-                                     layout=ipy.Layout(width='100%', height='auto', display='flex',
+                                     layout=ipy.Layout(width='50%', height='auto', display='flex',
                                                        flex_flow='row', align_items='stretch'))
-        # Slider widget to control the x-skew correction
-        xskew_2 = ipy.FloatText(value=0, min=0, max=45, description="$x_{skew}$: ", color='black',
-                                continuous_update=False,
-                                layout=ipy.Layout(width='45%', height='', display='inline-flex', flex_flow='row',
-                                                  align_items='stretch', align_content='stretch'))
-        # Slider widget to control the y-skew correction
-        yskew_2 = ipy.FloatText(value=0, min=0, max=45, description="$y_{skew}$: ", color='black',
-                                continuous_update=False,
-                                layout=ipy.Layout(width='45%', height='', display='inline-flex', flex_flow='row',
-                                                  align_items='stretch', align_content='stretch'))
         # Checkbox widget to flip along x or y axes
         xflip_2 = ipy.Checkbox(description="$x$-flip: ")
         yflip_2 = ipy.Checkbox(description="$y$-flip: ")
         # Textbox widget that control the colormap being used
         col_text_2 = ipy.Text(value='hot', description="$$Color-map: $$", color='black', continuous_update=False,
-                              layout=ipy.Layout(width='50%', height='', display='flex', flex_flow='row',
+                              layout=ipy.Layout(width='30%', height='', display='flex', flex_flow='row',
                                                 align_items='stretch'))
         autocontrast_2 = ipy.Checkbox(description="$$Lock\,con.:$$", value=True,
                                       layout=ipy.Layout(width='95%', height='auto', display='flex',
@@ -809,37 +797,46 @@ class STT(object):
         # Float Range widget that controls the minimum and maximum contrast
         coarse_cont_2 = ipy.FloatSlider(value=10, min=0, max=100, step=1, description="$$Coarse\,con.:$$",
                                         continuous_update=False,
-                                        layout=ipy.Layout(width='95%', height='auto', display='flex',
+                                        layout=ipy.Layout(width='50%', height='auto', display='flex',
                                                           flex_flow='row', align_items='stretch'))
         # Float Range widget that controls the minimum and maximum contrast
         fine_cont_2 = ipy.FloatSlider(value=0, min=0, max=1, step=0.01, description="$$Fine\,con.:$$",
                                       continuous_update=False,
-                                      layout=ipy.Layout(width='95%', height='auto', display='flex',
+                                      layout=ipy.Layout(width='50%', height='auto', display='flex',
                                                         flex_flow='row', align_items='stretch'))
+
+        # Checkbox widget to determine if there should be smoothing
+        smooth_2 = ipy.Checkbox(description="$$Smooth:$$", value=False,
+                                layout=ipy.Layout(width='95%', height='auto', display='flex',
+                                                  flex_flow='row', align_items='stretch'))
+
+        # Creating a tab widget to hold all the operational information
+        all_tabs = ipy.Tab([ipy.VBox([level_type_1,
+                                      ipy.HBox([x0_coord_1, y0_coord_1]),
+                                      ipy.HBox([x1_coord_1, y1_coord_1])]
+                                     ),
+                            ipy.VBox([label_2,
+                                      ipy.HBox([x0_crop_2, y0_crop_2]),
+                                      ipy.HBox([x1_crop_2, y1_crop_2]),
+                                      rotation_2,
+                                      ipy.HBox([xflip_2, yflip_2]),
+                                      smooth_2, col_text_2, autocontrast_2, coarse_cont_2, fine_cont_2])
+                            ],
+                           layout=ipy.Layout(display='inline-flex', flex_flow='column', align_items='stretch',
+                                             width='100%', height='100%'))
+        all_tabs.set_title(0, 'Level Operations')
+        all_tabs.set_title(1, 'Image Operations')
 
         # Defining a global widget box to hold all of the widgets
         self.widgets = ipy.HBox([ipy.VBox([data_select_0, scan_type_0],
                                           layout=ipy.Layout(display='inline-flex', flex_flow='column',
                                                             border='solid 0.5px', align_items='stretch',
                                                             width='15.5%', height='100%')),
-                                 ipy.VBox([label_0, level_type_1,
-                                           ipy.HBox([x0_coord_1, y0_coord_1]),
-                                           ipy.HBox([x1_coord_1, y1_coord_1]),
-                                           label_1,
-                                           ipy.HBox([x0_crop_1, y0_crop_1]),
-                                           ipy.HBox([x1_crop_1, y1_crop_1])],
-                                          layout=ipy.Layout(display='flex', flex_flow='column', align_items='stretch',
-                                                            width='', height='')),
-                                 ipy.VBox([label_2, rotation_2,
-                                           ipy.HBox([xflip_2, yflip_2]),
-                                           col_text_2, autocontrast_2, coarse_cont_2, fine_cont_2],
-                                          layout=ipy.Layout(display='inline-flex', flex_flow='column',
-                                                            align_items='stretch', width='34.5%', height='100%'))
-                                 ])
+                                 all_tabs])
 
     def update_function(self, chosen_data, scan_dir, level_type, p_x0, p_x1, p_y0, p_y1,
                         c_x0, c_x1, c_y0, c_y1,
-                        rot, xflip, yflip, colormap, autocontrast, coarse_cont, fine_cont):
+                        rot, xflip, yflip, smooth, colormap, autocontrast, coarse_cont, fine_cont):
         """
         Updates the topography scans and analysis using the defined widgets.
         """
@@ -880,9 +877,10 @@ class STT(object):
             plt.subplots(figsize=(22, 10))
             ax1 = plt.subplot(1, 2, 2)
             if autocontrast:
-                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap)
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, None, smooth)
             else:
-                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, self.image_props["contrast"])
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, self.image_props["contrast"],
+                               smooth)
 
             # Plotting the minimap of the topography scan selected
             ax2 = plt.subplot(2, 4, 6)
@@ -917,9 +915,10 @@ class STT(object):
             plt.subplots(figsize=(22, 10))
             ax1 = plt.subplot(1, 2, 2)
             if autocontrast:
-                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap)
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, None, smooth)
             else:
-                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, False, self.image_props["contrast"])
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, self.image_props["contrast"],
+                               smooth)
 
             # Plotting the minimap of the topography scan selected
             ax2 = plt.subplot(2, 4, 6)
@@ -953,10 +952,10 @@ class STT(object):
             plt.subplots(figsize=(22, 10))
             ax1 = plt.subplot(1, 2, 2)
             if autocontrast:
-                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap)
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, None, smooth)
             else:
-                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, False, self.image_props["contrast"])
-
+                self.topo_plot(self.final_data, ax1, self.scan_dir, colormap, None, self.image_props["contrast"],
+                               smooth)
             # Plotting the minimap of the topography scan selected
             ax2 = plt.subplot(2, 4, 6)
             self.minimap_topo_plot(self.leveled_data, ax2, self.scan_dir, colormap)
@@ -996,31 +995,33 @@ class STT(object):
         # - LHS widgets
         chosen_data = self.widgets.children[0].children[0]
         scan_dir = self.widgets.children[0].children[1]
-        # - MIDDLE widgets
-        level_type = self.widgets.children[1].children[1]
-        p_x0 = self.widgets.children[1].children[2].children[0]
-        p_y0 = self.widgets.children[1].children[2].children[1]
-        p_x1 = self.widgets.children[1].children[3].children[0]
-        p_y1 = self.widgets.children[1].children[3].children[1]
-        c_x0 = self.widgets.children[1].children[5].children[0]
-        c_y0 = self.widgets.children[1].children[5].children[1]
-        c_x1 = self.widgets.children[1].children[6].children[0]
-        c_y1 = self.widgets.children[1].children[6].children[1]
-        # - RHS widgets
-        rot = self.widgets.children[2].children[1]
-        xflip = self.widgets.children[2].children[2].children[0]
-        yflip = self.widgets.children[2].children[2].children[1]
-        colormap = self.widgets.children[2].children[3]
-        autocontrast = self.widgets.children[2].children[4]
-        coarse_cont = self.widgets.children[2].children[5]
-        fine_cont = self.widgets.children[2].children[6]
+        # - LEVEL OPERATION widgets
+        level_type = self.widgets.children[1].children[0].children[0]
+        p_x0 = self.widgets.children[1].children[0].children[1].children[0]
+        p_y0 = self.widgets.children[1].children[0].children[1].children[1]
+        p_x1 = self.widgets.children[1].children[0].children[2].children[0]
+        p_y1 = self.widgets.children[1].children[0].children[2].children[1]
+        # - IMAGE OPERATIONS widgets
+        c_x0 = self.widgets.children[1].children[1].children[1].children[0]
+        c_y0 = self.widgets.children[1].children[1].children[1].children[1]
+        c_x1 = self.widgets.children[1].children[1].children[2].children[0]
+        c_y1 = self.widgets.children[1].children[1].children[2].children[1]
+        rot = self.widgets.children[1].children[1].children[3]
+        xflip = self.widgets.children[1].children[1].children[4].children[0]
+        yflip = self.widgets.children[1].children[1].children[4].children[1]
+        smooth = self.widgets.children[1].children[1].children[5]
+        colormap = self.widgets.children[1].children[1].children[6]
+        autocontrast = self.widgets.children[1].children[1].children[7]
+        coarse_cont = self.widgets.children[1].children[1].children[8]
+        fine_cont = self.widgets.children[1].children[1].children[9]
 
         # Define the attribute to continuously update the figure, given the user interaction
         self.output = ipy.interactive(self.update_function, chosen_data=chosen_data, scan_dir=scan_dir,
                                       level_type=level_type, p_x0=p_x0, p_x1=p_x1, p_y0=p_y0, p_y1=p_y1,
                                       c_x0=c_x0, c_x1=c_x1, c_y0=c_y0, c_y1=c_y1,
-                                      rot=rot, xflip=xflip, yflip=yflip, colormap=colormap, autocontrast=autocontrast,
-                                      coarse_cont=coarse_cont, fine_cont=fine_cont, continous_update=False)
+                                      rot=rot, xflip=xflip, yflip=yflip, smooth=smooth, colormap=colormap,
+                                      autocontrast=autocontrast, coarse_cont=coarse_cont, fine_cont=fine_cont,
+                                      continous_update=False)
 
         # Display the final output of the widget interaction
         display(self.output.children[-1])
