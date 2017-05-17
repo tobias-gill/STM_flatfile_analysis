@@ -35,7 +35,7 @@
     \section Updates
     2017-04 pconstantinou:
         - Added axis key for the latest MATRIX version; 'MATRIX V3.3.1-_v1639-tag-release-MatrixKit_3.3.1-195903'.
-        - Explicitly defined 'sizeV' to be an integer for indexing purposes.
+        - Explicitly defined 'sizeV' to be an integer for indexing purposes in I(V) spec and grid I(V).
     2016-12 tgill:
         Altered to be compatible with python 3.
     2016-04 tgill:
@@ -564,7 +564,7 @@ class FlatFile():
             sizeY = (infoY['stop']-infoY['start'])//infoY['step']+1
 
             mirroredV = self.axis[self.axis_keys['V']]['mirrored']
-            sizeV = self.axis[self.axis_keys['V']]['clockCount']/(mirroredV+1)
+            sizeV = int(self.axis[self.axis_keys['V']]['clockCount']/(mirroredV+1))
 
             # Find out if I(V) are measured on bwd and fwd scan (==mirrored)
             mirroredX = len(self.axis[self.axis_keys['V']]['tableSets'][self.axis_keys['X']])==2
@@ -590,8 +590,8 @@ class FlatFile():
                 'unitv' : self.axis[self.axis_keys['V']]['unit'],
             })
             dataTemp = np.copy(self.rawData) # FIXME copy() .... this has huge memory impact
-            dataTemp.resize( sizeX*(mirroredX+1)*sizeY*(mirroredY+1),
-                             sizeV*(mirroredV+1) ) # each line is a spect. curve
+            dataTemp.resize(sizeX*(mirroredX+1)*sizeY*(mirroredY+1),
+                            sizeV*(mirroredV+1)) # each line is a spect. curve
             dataTemp = np.transpose(dataTemp) # each column is a spectroscopy curve
 
             # Cut Matrix in two if data are mirrored
