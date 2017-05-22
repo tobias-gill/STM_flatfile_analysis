@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage.interpolation import rotate
 from copy import deepcopy
+import ipywidgets as widgets
+from IPython.display import clear_output
+from IPython.display import display
 
 class local_plane():
 
@@ -435,3 +438,310 @@ def stm_profile_plot(flat_file, points, scan_dir=0, cmap=None, vmin=None, vmax=N
     cbar.set_label('Height [' + xy_units + ']', size=18, weight='bold')
 
     plt.show()
+
+
+class FFTPlot(object):
+    def __init__(self, flat_file):
+        super().__init__()
+
+        self.ff = flat_file
+
+        # Calculate FFT
+        self.perform_fft()
+
+        # Construct Widgets
+        self.create_sliders()
+        self.create_checkboxes()
+
+        # Create Layout
+        sliders = [self.contrast_slider, self.x_crop_slider, self.y_crop_slider]
+        sliders_vbox = widgets.VBox(sliders)
+
+        checkboxes = [self.y_crop]
+        checkboxes_vbox = widgets.VBox(checkboxes)
+
+        controls = [sliders_vbox, checkboxes_vbox]
+        controls_hbox = widgets.HBox(controls)
+
+        self.plot()
+
+        layout = [controls_hbox]
+        self.layout_vbox = widgets.VBox(layout)
+
+        self.contrast_slider.observe(self.change_contrast)
+        self.x_crop_slider.observe(self.change_zoom)
+        self.y_crop_slider.observe(self.change_zoom)
+
+        self.y_crop.observe(self.toggle_y_zoom)
+
+        self.fig.canvas.mpl_connect('button_press_event', self.onclick)
+
+        self.marker = None
+
+        display(self.layout_vbox)
+
+    def get_widget(self):
+        return self.layout_vbox
+
+    def perform_fft(self, use_flat=True):
+        """
+        Calculates the 2D discrete Fourier Transform on the image data. By default will use flattened data if it exists, if not
+        resorts to using the raw data.
+
+        Args:
+            use_flat (bool): Allows the user to overide the default behaviour of using flattened data.
+
+        Returns:
+            None
+        """
+        for scan_dir in range(len(self.ff)):
+            if use_flat and 'data_flat' in self.ff[scan_dir].__dict__.keys():
+                self.ff[scan_dir].data_fft = np.fft.fftshift(np.fft.fft2(self.ff[scan_dir].data_flat))
+            else:
+                self.ff[scan_dir].data_fft = np.fft.fftshift(np.fft.fft2(self.ff[scan_dir].data))
+
+    def create_sliders(self):
+        """
+        Creates all of the control sliders.
+
+        Returns:
+            None
+        """
+        self.create_contrast_slider()
+        self.create_crop_sliders()
+
+    def create_checkboxes(self):
+        """
+        Creates all of the control checkboxes.
+
+        Returns:
+            None
+        """
+        self.create_y_crop_box()
+
+    # Sliders
+    # =======
+
+    def create_contrast_slider(self):
+        """
+        Creates an IntSlider to change the contrast of the FFT plot. maximum valuesa taken from the data.
+
+        Returns:
+            None
+        """
+        contrast_max = 0
+        for scan_dir in self.ff:
+            temp_max = np.max(np.abs(scan_dir.data_fft))
+            if temp_max > contrast_max:
+                contrast_max = temp_max
+
+        self.contrast_slider = widgets.IntSlider(min=0, max=100, step=1, value=50, continuous_update=False,
+                                                 description='Contrast', readout=False)
+
+    def create_crop_sliders(self):
+        """
+        Creates an IntSlider to symmetrically crop the FFT plot, to effectively zoom in.
+
+        Returns:
+            None
+        """
+        x_range = int(self.ff[0].info['xres'] / 2)
+        y_range = int(self.ff[0].info['yres'] / 2)
+
+        self.x_crop_slider = widgets.IntSlider(min=0, max=x_range, step=1, value=0, continuous_update=True,
+                                               description='Zoom', readout=False)
+        self.y_crop_slider = widgets.IntSlider(min=0, max=y_range, step=1, value=0, continuous_update=True,
+                                               disabled=True,
+                                               description='Y - Zoom', readout=False)
+
+    # Checkboxes
+    # ==========
+
+    def create_y_crop_box(self):
+        """
+        Creates a CheckBox widget to toggle independent x and y zooming.
+
+        Returns:
+            None
+        """
+        self.y_crop = widgets.Checkbox(value=False, description='y zoom')
+
+    # Plotting
+    # ========
+
+    def plot(self):
+
+        x_mid = int(self.ff[0].info['xres'] / 2)
+        y_mid = int(self.ff[0].info['yres'] / 2)
+
+        x = x_mid - self.x_crop_slider.value
+
+        if self.y_crop.value is True:
+            y = y_mid - self.y_crop_slider.value
+        else:
+            y = y_mid - self.x_crop_slider.value
+
+        x0 = x_mid - x
+        x1 = x_mid + x
+        y0 = y_mid - y
+        y1 = y_mid + y
+
+        self.x_range = [x0, x1]
+        self.y_range = [y0, y1]
+
+        plot_data = np.abs(self.ff[0].data_fft[y0:y1, x0:x1])
+
+        self.v_range = np.max(plot_data) / 100
+
+        v_max = self.contrast_slider.value * self.v_range
+
+        cm2inch = 0.393701
+
+        self.fig, self.ax = plt.subplots(figsize=(15 * cm2inch, 15 * cm2inch))
+        self.fft_plot = self.ax.imshow(plot_data, origin='lower', cmap='hot', clim=(0, v_max), interpolation='none')
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+
+    def change_contrast(self, b):
+        """
+        Connected to the contrast slider in the FFT widget. When the slider is moved the plot colour map scale will be adjusted
+        to the range percentage value of the slider.
+
+        Args:
+            b: Widget
+
+        Returns:
+            None
+        """
+        self.fft_plot.set_clim(0, self.contrast_slider.value * self.v_range)
+        clear_output()
+        display(self.fig)
+
+    def change_zoom(self, b):
+        """
+        Connected to the zoom slider of the FFT Widget. Sets the x and y limits of the plot to effectively zoom.
+
+        Args:
+            b: Widget
+
+        Returns:
+            None
+        """
+
+        x_mid = int(self.ff[0].info['xres'] / 2)
+        y_mid = int(self.ff[0].info['yres'] / 2)
+
+        x = x_mid - self.x_crop_slider.value
+
+        if self.y_crop.value is True:
+            y = y_mid - self.y_crop_slider.value
+        else:
+            y = y_mid - self.x_crop_slider.value
+
+        x0 = x_mid - x
+        x1 = x_mid + x
+        y0 = y_mid - y
+        y1 = y_mid + y
+
+        self.x_range = [x0, x1]
+        self.y_range = [y0, y1]
+
+        self.ax.set_xlim([x0, x1])
+        self.ax.set_ylim([y0, y1])
+
+    def toggle_y_zoom(self, b):
+        """
+        Connected to the y zoom checkbox. Toggles whether to use seperate x and y zoom scales.
+
+        Args:
+            b: Widget
+
+        Returns:
+            None
+        """
+        if self.y_crop_slider.disabled is True:
+            self.y_crop_slider.disabled = False
+        elif self.y_crop_slider.disabled is False:
+            self.y_crop_slider.disabled = True
+
+    # Reciprocal measurements
+
+    def k_dist(self, px, py):
+        """
+        Calculates the reciprocal, and real space distances from a pair of x and y coordinates passed to the function. The
+
+        Args:
+            px (int): x direction pixel number of FFT image.
+            py (int): y direction pixel number of FFT image.
+
+        Returns:
+            k (float): Reciprocal distance of the given pixel.
+            r (float): Real space distance corresponding to the given pixel.
+        """
+
+        mid_x, mid_y = int(np.round(self.ff[0].info['xres'] / 2)), int(np.round(self.ff[0].info['yres'] / 2))
+
+        x_real, y_real = self.ff[0].info['xreal'], self.ff[0].info['yreal']
+        kx_real, ky_real = 2 * np.pi / x_real, 2 * np.pi / y_real
+
+        x = np.abs(px - mid_x)
+        y = np.abs(py - mid_y)
+
+        theta = np.degrees(np.arctan(y/x))
+
+        kx = kx_real - np.sum([kx_real for i in range(x + 1)])
+        ky = ky_real - np.sum([ky_real for i in range(y + 1)])
+
+        k = np.sqrt(kx ** 2 + ky ** 2)
+        r = 2 * np.pi / k
+
+        k = np.round(k, 2)
+        r = np.round(r, 4)
+        kx = np.round(kx, 2)
+        ky = np.round(ky, 2)
+        theta = np.round(theta, 2)
+
+        return (k, (kx, ky), theta), r
+
+    # Mouse Events
+
+    def onclick(self, event):
+        """
+        Called my a mouse click event within the plot axes. Will plot a marker pair that identifies the distance being calculated
+        by the k_dist() function. Also adds the recirpocal and real space distances as a title to the plot.
+
+        Args:
+            event (mpl event): Mouse click event within the plot axes.
+
+        Returns:
+            None
+        """
+
+        x = int(np.round(event.xdata))
+        y = int(np.round(event.ydata))
+
+        x_mid = int(np.round(self.ff[0].info['xres'] / 2))
+        y_mid = int(np.round(self.ff[0].info['yres'] / 2))
+
+        (k, (kx, ky), theta), r = self.k_dist(x, y)
+
+        if self.marker is None and event.button == 1:
+            self.marker, = self.ax.plot([x_mid, x], [y_mid, y], 'o-c', markersize=10, alpha=0.5)
+            self.ax.set_xlim(self.x_range)
+            self.ax.set_ylim(self.y_range)
+            self.ax.set_title("|k| = {k} {unit}^-1, r = {r} {unit}".format(k=k, unit=self.ff[0].info['unitxy'], r=r))
+            self.ax.set_xlabel("kx = {kx}, ky = {ky}, angle = {theta}".format(kx=kx, ky=ky, theta=theta))
+        elif event.button == 1:
+            self.marker.set_xdata([x_mid, x])
+            self.marker.set_ydata([y_mid, y])
+            self.ax.set_xlim(self.x_range)
+            self.ax.set_ylim(self.y_range)
+            self.ax.set_title("|k| = {k} {unit}^-1, r = {r} {unit}".format(k=k, unit=self.ff[0].info['unitxy'], r=r))
+            self.ax.set_xlabel("kx = {kx}, ky = {ky}, angle = {theta}".format(kx=kx, ky=ky, theta=theta))
+        elif event.button == 3:
+            self.marker.set_xdata([])
+            self.marker.set_ydata([])
+            self.ax.set_xlim(self.x_range)
+            self.ax.set_ylim(self.y_range)
+            self.ax.set_title('')
+
